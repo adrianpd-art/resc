@@ -120,23 +120,14 @@ canvas{display:block}
 #multPill.on{display:block;animation:multPop .28s cubic-bezier(.2,1.7,.4,1)}
 #multPill.x3{background:linear-gradient(180deg,#8CF7B4,var(--boost));color:#08320F;}
 @keyframes multPop{from{transform:scale(1.55) rotate(-7deg)}to{transform:scale(1)}}
-/* the coin counter BUMPS when a flying coin icon lands in it */
+/* The coin counter BUMPS the instant a coin is absorbed. There is no longer a
+   2D icon flying to the corner: the van eats the coin, the number ticks where
+   it stands, and nothing on screen travels toward the camera. */
 #coinBox.bump{animation:coinBump .24s cubic-bezier(.2,1.8,.4,1)}
 @keyframes coinBump{
   0%{transform:scale(var(--hs))}
   42%{transform:scale(calc(var(--hs) * 1.20))}
   100%{transform:scale(var(--hs))}
-}
-
-/* ---------- flying coin icons (pickup -> HUD counter) ---------- */
-#coinFly{position:fixed;inset:0;z-index:12;pointer-events:none;overflow:hidden}
-.cfly{
-  position:absolute;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;
-  border-radius:50%;
-  background:radial-gradient(circle at 36% 32%,#FFE277 0%,#FFC300 46%,#E09A00 78%,#B37E00 100%);
-  border:3px solid var(--ink);
-  box-shadow:0 0 11px rgba(255,200,60,.8), 0 2px 0 rgba(0,0,0,.35);
-  will-change:transform;
 }
 
 /* verde-blanco-rojo trim on the HUD frames */
@@ -497,7 +488,6 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
 </div>
 
 <div id="noteCol"></div>
-<div id="coinFly"></div>
 
 <!-- ============ TOUCH CONTROLS ============ -->
 <div id="touch">
@@ -619,15 +609,38 @@ var IS_MOBILE = IS_TOUCH && Math.min(window.innerWidth, window.innerHeight) < 95
 /* ================================================================
    1. CONFIG / CONSTANTS
    ================================================================ */
+/* ---------------------------------------------------------------------------
+   COURSE_SCALE  -  THE ONE NUMBER THAT SETS HOW LONG THE RUN IS
+   Every longitudinal distance in the game is derived from it, so nothing can
+   be left behind when the course is stretched. Two helpers, because there are
+   two kinds of distance:
+
+     courseD(v)  a distance inside the OBSTACLE COURSE. Measured from
+                 COURSE_ORIGIN (the first obstacle), so the run-up onto the
+                 bridge keeps its length and only the raceable part grows.
+                 Used by COURSE_D1, DECK_END, the jump ramps, the boundary.
+     bridgeD(v)  a distance measured from the START GATE. Used by scenery that
+                 is laid out along the crossing - signs, kilometre markers,
+                 papel picado, the far banks - so the dressing stretches with
+                 the deck instead of bunching up at the Mexican end.
+
+   1.48 turns the old ~3,100 units of obstacle course into ~4,440 and the old
+   ~59 s clean coast into ~88 s (FINISH_D 3,524 -> 5,014, +42%).
+   --------------------------------------------------------------------------- */
+var COURSE_SCALE = 1.48;
+var COURSE_ORIGIN = 95;
+function courseD(v) { return Math.round(COURSE_ORIGIN + (v - COURSE_ORIGIN) * COURSE_SCALE); }
+function bridgeD(v) { return Math.round(v * COURSE_SCALE); }
+
 var CFG = {
   LANES: 4,
   LANE_W: 4.4,
 
   // longitudinal layout (all in "distance travelled" units, forward = -Z)
   START_D:      -40,     // deck begins behind the van
-  COURSE_D0:     95,     // first obstacle allowed
-  COURSE_D1:    3095,    // last obstacle allowed
-  DECK_END:     3200,    // flat deck ends / final ramp starts
+  COURSE_D0:     COURSE_ORIGIN,   // first obstacle allowed
+  COURSE_D1:    courseD(3095),    // last obstacle allowed              (4535)
+  DECK_END:     courseD(3200),    // flat deck ends / final ramp starts  (4690)
   RAMP_LEN:      110,
   RAMP_RISE:      16,
   GAP:            46,    // open air between ramp lip and the landing ground
@@ -671,8 +684,8 @@ var CFG = {
   FOG_NEAR:      170,
   FOG_FAR:       860
 };
-CFG.RAMP_TOP  = CFG.DECK_END + CFG.RAMP_LEN;              // 3310
-CFG.PLAZA_D0  = CFG.RAMP_TOP + CFG.GAP;                   // 3356  (touchdown, on LAND)
+CFG.RAMP_TOP  = CFG.DECK_END + CFG.RAMP_LEN;              // 4800
+CFG.PLAZA_D0  = CFG.RAMP_TOP + CFG.GAP;                   // 4846  (touchdown, on LAND)
 CFG.FINISH_D  = CFG.PLAZA_D0 + 168;                       // customs checkpoint stop line
 CFG.PLAZA_D1  = CFG.PLAZA_D0 + CFG.PLAZA_LEN;
 CFG.ROAD_W    = CFG.LANES * CFG.LANE_W;                   // 17.6
@@ -687,16 +700,17 @@ CFG.WALK_W     = 2.9;                                     // pedestrian walkway
 CFG.BRIDGE_HALF = CFG.DECK_W * 0.5 + CFG.WALK_W + 0.5;    // outermost edge
 CFG.PIER_STEP  = 40;                                      // one pier bent every 40 u
 CFG.WATER_Y    = -13;
-/* the international boundary follows the middle of the river */
-CFG.BOUNDARY_D = 1620;
+/* the international boundary follows the middle of the river - the MIDPOINT of
+   the deck, wherever COURSE_SCALE puts that */
+CFG.BOUNDARY_D = courseD(1620);                           // 2352 ~= DECK_END/2
 
 /* --- the three jumps ------------------------------------------------------
    Each entry: d0 = ramp start, len / rise = the ramp, top = lip,
    land = where solid deck resumes on the far side of the gap.
    The final jump (index 2) launches OFF the bridge and lands on LAND.        */
 var JUMPS = [
-  { d0: 1080, len: 66, rise: 8.5, gap: 34, land: 0, top: 0, big: false },
-  { d0: 2180, len: 66, rise: 9.5, gap: 38, land: 0, top: 0, big: false },
+  { d0: courseD(1080), len: 66, rise: 8.5, gap: 34, land: 0, top: 0, big: false },
+  { d0: courseD(2180), len: 66, rise: 9.5, gap: 38, land: 0, top: 0, big: false },
   { d0: CFG.DECK_END, len: CFG.RAMP_LEN, rise: CFG.RAMP_RISE, gap: CFG.GAP, land: 0, top: 0, big: true }
 ];
 (function () {
@@ -2297,8 +2311,10 @@ function buildRiver() {
   var sandM = toon(COL.sand, { flat: true });
   var mudM = toon(0x9c8f5f, { flat: true });
 
-  // --- sandbars: long low islands lying across the channel
-  for (var i = 0; i < 14; i++) {
+  // --- sandbars: long low islands lying across the channel. The count scales
+  //     with the course so a longer river is not a longer empty river.
+  var nBars = Math.round(14 * COURSE_SCALE);
+  for (var i = 0; i < nBars; i++) {
     var sd = -(120 + r() * (CFG.SHORE_D - 260));
     if (jumpAt(-sd)) continue;
     var side = (i % 2 === 0) ? -1 : 1;
@@ -2318,7 +2334,7 @@ function buildRiver() {
   }
 
   // --- reed beds along the two banks
-  for (var b = 0; b < 46; b++) {
+  for (var b = 0; b < Math.round(46 * COURSE_SCALE); b++) {
     var bank = (b % 2 === 0) ? -(10 + r() * 90) : -(CFG.SHORE_D - 8 - r() * 90);
     var sd2 = (b % 4 < 2) ? -1 : 1;
     g.add(makeCarrizo(r, sd2 * (26 + r() * 300), CFG.WATER_Y + 0.6, bank));
@@ -2454,22 +2470,26 @@ function roadSignPost(d, side, lines, bg, fg, w, h) {
 }
 function buildBridgeSigns() {
   var g = new THREE.Group();
+  /* every distance below goes through bridgeD(), so the signage spreads out
+     with COURSE_SCALE instead of bunching up at the Mexican end */
   // ---- Mexican half
-  g.add(roadSignPost(46, -1, ['PUENTE', 'INTERNACIONAL'], '#0e7a3c', '#ffffff', 5.2, 2.6));
-  g.add(roadSignPost(118, 1, ['CEDA EL PASO'], '#f2ede1', '#14181f', 4.6, 2.0));
-  g.add(roadSignPost(210, -1, ['SALIDA DE', 'MÉXICO'], '#0e7a3c', '#ffffff', 4.8, 2.4));
-  g.add(roadSignPost(330, 1, ['VELOCIDAD', 'MÁXIMA 40'], '#f2ede1', '#14181f', 4.2, 2.2));
-  g.add(roadSignPost(560, -1, ['ADUANA', 'ADELANTE'], '#0e7a3c', '#ffffff', 4.6, 2.3));
-  // ---- kilometre markers up the Mexican half
-  var KM = [[1, 250], [2, 700], [3, 1380]];
+  g.add(roadSignPost(bridgeD(46), -1, ['PUENTE', 'INTERNACIONAL'], '#0e7a3c', '#ffffff', 5.2, 2.6));
+  g.add(roadSignPost(bridgeD(118), 1, ['CEDA EL PASO'], '#f2ede1', '#14181f', 4.6, 2.0));
+  g.add(roadSignPost(bridgeD(210), -1, ['SALIDA DE', 'MÉXICO'], '#0e7a3c', '#ffffff', 4.8, 2.4));
+  g.add(roadSignPost(bridgeD(330), 1, ['VELOCIDAD', 'MÁXIMA 40'], '#f2ede1', '#14181f', 4.2, 2.2));
+  g.add(roadSignPost(bridgeD(560), -1, ['ADUANA', 'ADELANTE'], '#0e7a3c', '#ffffff', 4.6, 2.3));
+  // ---- kilometre markers up the Mexican half (two more, the deck is longer)
+  var KM = [[1, 250], [2, 600], [3, 1000], [4, 1300], [5, 1550]];
   for (var km = 0; km < KM.length; km++) {
-    g.add(roadSignPost(KM[km][1], (km % 2 ? 1 : -1), ['KM ' + KM[km][0]], '#f2ede1', '#0e7a3c', 2.2, 1.6));
+    var kmD = bridgeD(KM[km][1]);
+    if (kmD > CFG.BOUNDARY_D - 30) break;      // Mexican half only
+    g.add(roadSignPost(kmD, (km % 2 ? 1 : -1), ['KM ' + KM[km][0]], '#f2ede1', '#0e7a3c', 2.2, 1.6));
   }
   // ---- American half
-  g.add(roadSignPost(CFG.BOUNDARY_D + 150, 1, ['SPEED', 'LIMIT 30'], '#f2ede1', '#14181f', 4.0, 2.6));
-  g.add(roadSignPost(CFG.BOUNDARY_D + 430, -1, ['U.S. CUSTOMS', 'AHEAD'], '#1e5bff', '#ffffff', 5.4, 2.5));
-  g.add(roadSignPost(CFG.BOUNDARY_D + 900, 1, ['ALL VEHICLES', 'MUST STOP'], '#f2ede1', '#d42a2a', 5.2, 2.5));
-  g.add(roadSignPost(CFG.BOUNDARY_D + 1300, -1, ['DEL RIO, TX', 'NEXT EXIT'], '#0e7a3c', '#ffffff', 5.2, 2.5));
+  g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(150), 1, ['SPEED', 'LIMIT 30'], '#f2ede1', '#14181f', 4.0, 2.6));
+  g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(430), -1, ['U.S. CUSTOMS', 'AHEAD'], '#1e5bff', '#ffffff', 5.4, 2.5));
+  g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(900), 1, ['ALL VEHICLES', 'MUST STOP'], '#f2ede1', '#d42a2a', 5.2, 2.5));
+  g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(1300), -1, ['DEL RIO, TX', 'NEXT EXIT'], '#0e7a3c', '#ffffff', 5.2, 2.5));
   worldRoot.add(g);
 }
 
@@ -2648,7 +2668,7 @@ function buildAcuna() {
      player's peripheral vision while they are actually driving, instead of
      only in the two seconds before they pass under the gate. Del Rio gets the
      mirror-image treatment on the far side (see buildDelRio). */
-  var FB0 = -140, FB1 = 820, FBX0 = -205, FBX1 = -760;
+  var FB0 = -140, FB1 = bridgeD(820), FBX0 = -205, FBX1 = -760;
   var fbSlab = box(Math.abs(FBX1 - FBX0), 22, FB1 - FB0, toon(0xc9a878),
     (FBX0 + FBX1) * 0.5, TOP - 11, -(FB0 + (FB1 - FB0) * 0.5));
   addOutline(fbSlab, 0.16); g.add(fbSlab);
@@ -2848,7 +2868,7 @@ function buildDelRio() {
   /* --- DEL RIO'S FAR BANK, the mirror of Acuña's: pale stone blocks out to
      the right of the American half of the crossing, so the town you are
      driving into is in view long before you reach the customs canopy. */
-  var UB0 = CFG.BOUNDARY_D + 160, UB1 = CFG.SHORE_D + 60, UBX0 = 215, UBX1 = 790;
+  var UB0 = CFG.BOUNDARY_D + bridgeD(160), UB1 = CFG.SHORE_D + 60, UBX0 = 215, UBX1 = 790;
   var ubSlab = box(UBX1 - UBX0, 22, UB1 - UB0, toon(0xd6b183),
     (UBX0 + UBX1) * 0.5, TOP - 11.2, -(UB0 + (UB1 - UB0) * 0.5));
   addOutline(ubSlab, 0.16); g.add(ubSlab);
@@ -3021,9 +3041,12 @@ var PAPEL_POLE_Y = 0.55;                     // walkway surface
 function buildPapelPicado() {
   var g = new THREE.Group();
   var n = IS_MOBILE ? 7 : 9;
-  var step = IS_MOBILE ? 66 : 52;
+  /* the strand SPACING grows with the course as well as the extent, so a
+     longer bridge gets the same number of stations spread further out rather
+     than half again as much geometry */
+  var step = bridgeD(IS_MOBILE ? 66 : 52);
   var i = 0;
-  for (var d = 30; d < 640; d += step) {
+  for (var d = 30; d < bridgeD(640); d += step) {
     if (jumpAt(d)) continue;
     var h = 8.3 + (i % 2) * 0.55;
     for (var s = -1; s <= 1; s += 2) {
@@ -3399,6 +3422,35 @@ function makeOfficer(uniform, prop) {
 var van, vanBody, wheels = [], VAN_OUTLINE, vanShadow, exhaustAnchor;
 var rearDoorL = null, rearDoorR = null;
 var cargoHold = null;
+/* the coin-absorb rim glow: a wider additive-gold inverted hull over the van's
+   silhouette, off except for ~0.25 s after every coin (see buildVan) */
+var vanGoldShell = null, VAN_GOLD_MAT = null, VAN_GOLD_MAT2 = null;
+var GOLD_FX = { t: -1, dur: 0.25 };
+function vanGoldPulse() { GOLD_FX.t = 0; }
+function updateVanGold(dt) {
+  if (!vanGoldShell || !VAN_GOLD_MAT) return;
+  if (GOLD_FX.t < 0) { return; }
+  GOLD_FX.t += dt;
+  var k = GOLD_FX.t / GOLD_FX.dur;
+  if (k >= 1) {
+    GOLD_FX.t = -1;
+    VAN_GOLD_MAT.opacity = 0;
+    if (VAN_GOLD_MAT2) VAN_GOLD_MAT2.opacity = 0;
+    vanGoldShell.visible = false;
+    return;
+  }
+  // snap on, ease off - a flash, not a fade-in
+  var env = clamp((k < 0.18) ? (k / 0.18) : (1 - (k - 0.18) / 0.82), 0, 1);
+  vanGoldShell.visible = true;
+  VAN_GOLD_MAT.opacity = env * 0.95;
+  if (VAN_GOLD_MAT2) VAN_GOLD_MAT2.opacity = env * 0.34;
+}
+function resetVanGold() {
+  GOLD_FX.t = -1;
+  if (VAN_GOLD_MAT) VAN_GOLD_MAT.opacity = 0;
+  if (VAN_GOLD_MAT2) VAN_GOLD_MAT2.opacity = 0;
+  if (vanGoldShell) vanGoldShell.visible = false;
+}
 
 /* ---------------------------------------------------------------------------
    THE CARGO HOLD
@@ -3798,6 +3850,52 @@ function buildVan() {
     vanBody.add(wg);
     wheels.push(wg);
   }
+
+  /* ---- THE GOLD RIM GLOW -------------------------------------------------
+     A second, WIDER inverted hull over the four masses that make up the van's
+     silhouette, in additive gold. Because it is BackSide it is hidden wherever
+     the bodywork is in front of it, so all that ever shows is a warm gold band
+     around the outside of the van - a rim light, not a tint. That is the one
+     way to glow a MeshToonMaterial without touching its cel ramp (the toon
+     material is shared and cached, so an emissive pulse on it would light up
+     every other white object in the scene too), and it sits OUTSIDE the ink
+     outline rather than replacing it.
+     Opacity is driven by vanGoldPulse() / updateVanGold(); it is 0 and
+     invisible for all but ~0.25 s after each coin. */
+  VAN_GOLD_MAT = new THREE.MeshBasicMaterial({
+    color: 0xffbe3c, side: THREE.BackSide, transparent: true, opacity: 0,
+    depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+  });
+  /* a second, much wider, much fainter hull outside the first, so the rim has
+     a soft falloff instead of reading as a hard gold band */
+  VAN_GOLD_MAT2 = new THREE.MeshBasicMaterial({
+    color: 0xff9a1e, side: THREE.BackSide, transparent: true, opacity: 0,
+    depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+  });
+  vanGoldShell = new THREE.Group();
+  vanGoldShell.visible = false;
+  /* the ink outline is 0.045 wide, so the gold only ever shows OUTSIDE it:
+     a bright core band from 0.045 to 0.34, and a soft halo out to 0.78 */
+  var goldMasses = [
+    [BXO * 2, BY1 - BY0, BZD, 0, 2.05, BZC],      // the box body
+    [2.45, 0.85, 1.65, 0, 1.45, -2.34],           // hood
+    [2.55, 0.80, 6.10, 0, 0.92, -0.05],           // skirt / chassis
+    [2.50, 0.16, 4.40, 0, 3.06, 0.75]             // roof cap
+  ];
+  var goldLayers = [[0.34, VAN_GOLD_MAT, 3], [0.78, VAN_GOLD_MAT2, 2]];
+  for (var gl = 0; gl < goldLayers.length; gl++) {
+    var GW = goldLayers[gl][0];
+    for (var gm = 0; gm < goldMasses.length; gm++) {
+      var GM = goldMasses[gm];
+      var gsh = new THREE.Mesh(
+        new THREE.BoxGeometry(GM[0] + GW * 2, GM[1] + GW * 2, GM[2] + GW * 2), goldLayers[gl][1]);
+      gsh.position.set(GM[3], GM[4], GM[5]);
+      gsh.renderOrder = goldLayers[gl][2];        // after the opaque bodywork
+      gsh.userData.noOutline = true;
+      vanGoldShell.add(gsh);
+    }
+  }
+  vanBody.add(vanGoldShell);
 
   /* ---- outlines (dedicated material so we can flash it red on impact) ---- */
   VAN_OUTLINE = new THREE.MeshBasicMaterial({ color: COL.ink, side: THREE.BackSide });
@@ -5429,18 +5527,22 @@ function clearCoins() {
 }
 
 /* ===========================================================================
-   8b-ii. COIN PICKUP FX
-   The old pickup grew the coin to 2.5x and flew it at the camera, which reads
-   as the coin attacking the player. The new one is the arcade-standard three
-   part burst:
-     1. the coin SNAPS to the van over COIN_SNAP seconds, shrinking with a fast
-        spin (never scaling up, never moving toward the camera)
-     2. it pops into a ring of 8-10 gold sparkles plus one short expanding ring
-     3. a "+100" (x mult) floating number rises and fades from the PICKUP spot,
-        and a 2D gold coin icon flies along a curve to the HUD counter, which
-        bumps as it lands - and only then does the counter increment.
+   8b-ii. COIN PICKUP FX  -  THE VAN ABSORBS THE COIN
+   No icon flies to the HUD any more, and nothing about a pickup moves toward
+   the camera or grows. The whole event happens on the van:
+
+     1. the coin is PULLED INTO the van's body over COIN_SNAP (~0.1 s),
+        shrinking and spinning fast, and disappears inside the bodywork
+     2. the van flashes a warm gold RIM GLOW for ~0.25 s - an additive gold
+        inverted hull a shade wider than the ink outline, so it reads as a
+        halo around the silhouette and leaves the toon shading alone
+     3. a gold RING pulses outward from under the van at road level, flat on
+        the tarmac, and 6-8 gold sparkles burst around the roof line
+     4. a small "+100" (x mult) floating number rises and fades from the
+        pickup spot, and the MONEDAS counter ticks IN PLACE with its bump the
+        instant the coin is taken
    =========================================================================== */
-var COIN_SNAP = 0.08;
+var COIN_SNAP = 0.10;
 
 /* ---- the expanding ring ------------------------------------------------- */
 var RING_TEX = null, ringPool = [], ringLive = [];
@@ -5469,7 +5571,11 @@ function acquireRing() {
   scene.add(m);
   return m;
 }
-function fxRing(x, y, z, life, s0, s1) {
+/* flat = the ring lies ON THE ROAD instead of facing the camera. That is what
+   a shockwave spreading out from under the van has to do: a billboarded ring
+   at the van's feet reads as a disc flying at the player, which is exactly the
+   thing this pass is removing. */
+function fxRing(x, y, z, life, s0, s1, flat) {
   if (ringLive.length > 10) return;
   var m = acquireRing();
   m.visible = true;
@@ -5479,7 +5585,9 @@ function fxRing(x, y, z, life, s0, s1) {
   m.userData.life = life || 0.30;
   m.userData.s0 = s0 || 0.7;
   m.userData.s1 = s1 || 3.4;
+  m.userData.flat = !!flat;
   m.scale.set(m.userData.s0, m.userData.s0, 1);
+  if (flat) m.rotation.set(-Math.PI / 2, 0, 0);
   ringLive.push(m);
 }
 function updateRings(dt) {
@@ -5490,7 +5598,8 @@ function updateRings(dt) {
     var s = lerp(u.s0, u.s1, 1 - Math.pow(1 - k, 2));
     m.scale.set(s, s, 1);
     m.material.opacity = 1 - k;
-    m.quaternion.copy(camera.quaternion);
+    if (u.flat) m.rotation.set(-Math.PI / 2, 0, 0);
+    else m.quaternion.copy(camera.quaternion);
     if (k >= 1) { m.visible = false; ringPool.push(m); ringLive.splice(i, 1); }
   }
 }
@@ -5518,7 +5627,9 @@ function fxPopNumber(x, y, z, txt) {
   else {
     /* depthTest off: a floating score number is a read-out, not a solid, and
        a pickup taken level with the van would otherwise vanish inside it */
-    m = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.95), new THREE.MeshBasicMaterial({
+    /* deliberately SMALL: it is a receipt, not an event. The event is the van
+       swallowing the coin. */
+    m = new THREE.Mesh(new THREE.PlaneGeometry(1.22, 0.61), new THREE.MeshBasicMaterial({
       transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 1
     }));
     m.visible = false; m.frustumCulled = false;
@@ -5527,12 +5638,12 @@ function fxPopNumber(x, y, z, txt) {
   }
   m.material.map = popNumTexture(txt);
   m.material.needsUpdate = true;
-  m.material.opacity = 1;
+  m.material.opacity = 0.82;
   m.visible = true;
   m.position.set(x, y + 0.3, z);
   m.scale.set(0.2, 0.2, 1);
   m.userData.age = 0;
-  m.userData.life = 0.78;
+  m.userData.life = 0.62;
   popLive.push(m);
 }
 function updatePopNumbers(dt) {
@@ -5540,10 +5651,10 @@ function updatePopNumbers(dt) {
     var m = popLive[i], u = m.userData;
     u.age += dt;
     var k = clamp(u.age / u.life, 0, 1);
-    m.position.y += 2.4 * dt;
+    m.position.y += 1.9 * dt;
     var s = k < 0.22 ? easeOutBack(k / 0.22) : 1;
     m.scale.set(s, s, 1);
-    m.material.opacity = k < 0.55 ? 1 : (1 - (k - 0.55) / 0.45);
+    m.material.opacity = 0.82 * (k < 0.45 ? 1 : (1 - (k - 0.45) / 0.55));
     m.quaternion.copy(camera.quaternion);
     if (k >= 1) { m.visible = false; popPool.push(m); popLive.splice(i, 1); }
   }
@@ -5553,74 +5664,10 @@ function clearPopNumbers() {
   popLive.length = 0;
 }
 
-/* ---- the 2D gold icon that flies to the HUD counter ---------------------- */
-var coinFlyLive = [], coinFlyPool = [], _flyProj = null, _bumpTimer = 0;
-function coinFlyHost() { return $('coinFly'); }
-function hudCoinTarget() {
-  var ic = document.querySelector('#coinBox .coinIcon');
-  var el = ic || $('coinBox');
-  if (!el) return { x: 40, y: 110 };
-  var r = el.getBoundingClientRect();
-  if (!r.width && !r.height) return { x: 40, y: 110 };
-  return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
-}
-function spawnCoinFly(wx, wy, wz) {
-  var host = coinFlyHost();
-  if (!host || !camera) return;
-  if (coinFlyLive.length > 14) return;
-  if (!_flyProj) _flyProj = new THREE.Vector3();
-  _flyProj.set(wx, wy, wz).project(camera);
-  if (!isFinite(_flyProj.x) || !isFinite(_flyProj.y)) return;
-  var W = window.innerWidth || 800, H = window.innerHeight || 600;
-  var sx = clamp((_flyProj.x * 0.5 + 0.5) * W, -60, W + 60);
-  var sy = clamp((-_flyProj.y * 0.5 + 0.5) * H, -60, H + 60);
-  var tgt = hudCoinTarget();
-  var el = coinFlyPool.length ? coinFlyPool.pop() : (function () {
-    var d = document.createElement('div');
-    d.className = 'cfly';
-    host.appendChild(d);
-    return d;
-  })();
-  el.style.display = 'block';
-  var f = {
-    el: el, t: 0, dur: 0.46 + Math.random() * 0.10,
-    x0: sx, y0: sy, x1: tgt.x, y1: tgt.y,
-    // control point: lift the arc up and out so it reads as a curve
-    cx: sx + (tgt.x - sx) * 0.30 + (Math.random() - 0.5) * 90,
-    cy: Math.min(sy, tgt.y) - 70 - Math.random() * 70
-  };
-  el.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) scale(1)';
-  coinFlyLive.push(f);
-}
-function updateCoinFly(dt) {
-  var tgt = coinFlyLive.length ? hudCoinTarget() : null;
-  for (var i = coinFlyLive.length - 1; i >= 0; i--) {
-    var f = coinFlyLive[i];
-    f.t += dt;
-    var k = clamp(f.t / f.dur, 0, 1);
-    var e = k * k * (3 - 2 * k);                      // smoothstep
-    if (tgt) { f.x1 = tgt.x; f.y1 = tgt.y; }
-    var iv = 1 - e;
-    var px = iv * iv * f.x0 + 2 * iv * e * f.cx + e * e * f.x1;
-    var py = iv * iv * f.y0 + 2 * iv * e * f.cy + e * e * f.y1;
-    var sc = 1 - 0.35 * e;
-    f.el.style.transform = 'translate(' + px.toFixed(1) + 'px,' + py.toFixed(1) + 'px) scale(' + sc.toFixed(2) + ')';
-    if (k >= 1) {
-      f.el.style.display = 'none';
-      coinFlyPool.push(f.el);
-      coinFlyLive.splice(i, 1);
-      GAME.coinsHud++;                                // THE COUNTER TICKS HERE
-      bumpCoinBox();
-    }
-  }
-  /* safety: if an icon could never be spawned (no camera, off screen, a
-     restart mid-flight) the HUD must still agree with the real count */
-  if (!coinFlyLive.length && GAME.coinsHud !== GAME.coins) GAME.coinsHud = GAME.coins;
-  if (_bumpTimer > 0) {
-    _bumpTimer -= dt;
-    if (_bumpTimer <= 0) { var cb = $('coinBox'); if (cb) cb.className = ''; }
-  }
-}
+/* ---- the HUD counter bump ------------------------------------------------
+   The number now ticks IN PLACE the moment a coin is absorbed; the bump is the
+   only thing the HUD does about it. Nothing flies to the corner any more. */
+var _bumpTimer = 0;
 function bumpCoinBox() {
   var cb = $('coinBox');
   if (!cb) return;
@@ -5629,32 +5676,46 @@ function bumpCoinBox() {
   cb.className = 'bump';
   _bumpTimer = 0.26;
 }
-function clearCoinFly() {
-  for (var i = 0; i < coinFlyLive.length; i++) {
-    coinFlyLive[i].el.style.display = 'none';
-    coinFlyPool.push(coinFlyLive[i].el);
+function updateCoinHud(dt) {
+  if (GAME.coinsHud !== GAME.coins) GAME.coinsHud = GAME.coins;
+  if (_bumpTimer > 0) {
+    _bumpTimer -= dt;
+    if (_bumpTimer <= 0) { var cb = $('coinBox'); if (cb) cb.className = ''; }
   }
-  coinFlyLive.length = 0;
+}
+function clearCoinFly() {
   _bumpTimer = 0;
   var cb = $('coinBox');
   if (cb) cb.className = '';
 }
 
-/* the pop itself: 8-10 sparkles in a ring, plus one short expanding ring */
-function fxCoinBurst(x, y, z) {
-  var n = IS_MOBILE ? 8 : 10;
+/* ---------------------------------------------------------------------------
+   THE ABSORB FLASH
+   Fired the instant the coin vanishes inside the bodywork:
+     - the warm gold RIM GLOW on the van (vanGoldShell / vanGoldPulse)
+     - one gold RING pulsing outward FLAT ON THE ROAD from under the van
+     - 6-8 gold SPARKLES popping around the roof line
+   Nothing here travels toward the camera and nothing grows on screen: the ring
+   spreads along the tarmac and the sparkles are thrown outward, up and BACK.
+   --------------------------------------------------------------------------- */
+function fxCoinAbsorb() {
+  vanGoldPulse();
+  var gy = hasGround(GAME.dist) ? roadHeightAt(GAME.dist) : GAME.y;
+  fxRing(GAME.x, gy + 0.07, -GAME.dist + 0.4, 0.34, 1.1, 5.6, true);
+  var n = IS_MOBILE ? 6 : 8;
   for (var i = 0; i < n; i++) {
-    var a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
-    var sp = 4.2 + Math.random() * 2.6;
+    var a = (i / n) * Math.PI * 2 + Math.random() * 0.35;
+    var sp = 2.2 + Math.random() * 1.9;
     emit({
-      x: x, y: y, z: z,
-      vx: Math.cos(a) * sp, vy: 1.4 + Math.random() * 3.4, vz: Math.sin(a) * sp * 0.85,
-      life: 0.26 + Math.random() * 0.16, size: 0.15 + Math.random() * 0.13,
+      x: GAME.x + Math.cos(a) * 0.9,
+      y: GAME.y + 3.15 + Math.random() * 0.35,
+      z: -GAME.dist + 0.7 + Math.sin(a) * 1.5,
+      vx: Math.cos(a) * sp, vy: 1.9 + Math.random() * 2.6, vz: Math.sin(a) * sp * 0.8 + 2.5,
+      life: 0.26 + Math.random() * 0.16, size: 0.13 + Math.random() * 0.10,
       color: i % 3 === 0 ? 0xffffff : (i % 3 === 1 ? COL.gold : COL.goldL),
-      grav: 7, spin: 11
+      grav: 8, spin: 11
     });
   }
-  fxRing(x, y, z, 0.28, 0.6, 3.2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -5689,9 +5750,12 @@ function collectCoin(c) {
   if (GAME.streak > GAME.bestStreak) GAME.bestStreak = GAME.streak;
   var m = streakMult();
   GAME.coinPts += 100 * m;
-  SFX.coin(Math.min(GAME.streak - 1, 12));          // the rising-pitch ding stays
+  /* THE COUNTER TICKS HERE, in place, with its bump. There is no flight to the
+     HUD corner and no arrival to wait for. */
+  GAME.coinsHud = GAME.coins;
+  bumpCoinBox();
+  SFX.coin(Math.min(GAME.streak - 1, 12));          // the rising-pitch chime
   fxPopNumber(u.px, u.py, u.pz, '+' + (100 * m));
-  spawnCoinFly(u.px, u.py, u.pz);
   if (GAME.streak === STREAK_X2 || GAME.streak === STREAK_X3) {
     toastCol('¡RACHA x' + m + '!', 'gold');
   }
@@ -5706,27 +5770,26 @@ function updateCoins(dt) {
     var u = c.userData;
 
     if (u.taken) {
-      /* THE SNAP. The coin flies TOWARD THE VAN over COIN_SNAP seconds while
-         shrinking and spinning fast, then pops. It may never scale up and it
-         may never travel toward the camera - that was the old, wrong, feel. */
+      /* THE ABSORB. The coin is pulled INTO the van's body over COIN_SNAP
+         seconds, shrinking and spinning fast, and disappears inside it. It may
+         never scale up and it may never travel toward the camera. The target is
+         the middle of the load space, so the coin goes IN - it does not pop
+         above the roof and it does not fly at the player. */
       u.pop += dt;
       var k = clamp(u.pop / COIN_SNAP, 0, 1);
       var e = k * k;
-      /* the snap target is just clear of the roof line rather than the middle
-         of the bodywork, so the pop happens where the player can see it
-         instead of inside the van */
-      var tx = GAME.x, ty = GAME.y + 3.35, tz = -GAME.dist + 1.3;
+      var tx = GAME.x, ty = GAME.y + 1.95, tz = -GAME.dist + 0.75;
       c.position.set(lerp(u.px, tx, e), lerp(u.py, ty, e), lerp(u.pz, tz, e));
-      var sc = clamp(1 - 0.88 * e, 0.08, 1);
+      var sc = clamp(1 - 0.97 * e, 0.03, 1);
       c.scale.set(sc, sc, sc);
       u.spin.rotation.y += dt * 46;
       if (u.halo) {
         u.halo.quaternion.copy(camera.quaternion);
-        u.halo.scale.setScalar(clamp(1 - 0.6 * e, 0.3, 1));
+        u.halo.scale.setScalar(clamp(1 - 0.9 * e, 0.08, 1));
       }
       if (u.dot) u.dot.visible = false;
       if (k >= 1) {
-        fxCoinBurst(c.position.x, c.position.y, c.position.z);
+        fxCoinAbsorb();
         if (u.halo) u.halo.scale.setScalar(1);
         releaseCoin(c);
         activeCoins.splice(i, 1);
@@ -6998,8 +7061,14 @@ function generateCourse(seed) {
          It used to be 3-4, but rows are spaced off the (now higher) speed cap,
          so 4 chunks became a thousand units of unbroken hazard - which is
          exactly the monotonous middle being fixed. Shorter sections mean MORE
-         alternations between OBRAS / TRÁFICO / AGUAS and ZONA TURBO. */
-      var nChunks = (prog < 0.30) ? 3 : (2 + (r() < 0.5 ? 1 : 0));
+         alternations between OBRAS / TRÁFICO / AGUAS and ZONA TURBO.
+         On the LONGER course this matters even more: a back-half chunk is ~320
+         units on its own, so three of them is a thousand units of unbroken
+         hazard AND it costs the run a whole extra section. Sections are
+         therefore always TWO chunks now, which is what buys the 4th ZONA TURBO
+         and the extra themed hazard sections; obstacle DENSITY per unit of
+         road is unchanged, there are simply more, shorter sections. */
+      var nChunks = 2;
       var lib = patternsFor(kind);
       for (var ci = 0; ci < nChunks; ci++) {
         if (d >= CFG.COURSE_D1 || jumpClearZone(d)) break;
@@ -7029,7 +7098,7 @@ function generateCourse(seed) {
         PATTERN_LOG.push({ name: pat.name, theme: kind, d0: Math.round(d), d1: Math.round(P.d), gap: Math.round(gap) });
         d = P.d;
         pathLane = clamp(P.lane, 0, CFG.LANES - 1);
-        d += gap * 0.5;                       // a beat of clear road between chunks
+        d += gap * 0.40;                      // a beat of clear road between chunks
       }
 
       // ---- the section is over: score it, then hand out a breather
@@ -7046,7 +7115,7 @@ function generateCourse(seed) {
       // one power-up per dense section, in the calm stretch just after it
       pickupPlan.push({ d: d + 26, lane: clamp(pathLane + (r() < 0.5 ? -1 : 1), 0, CFG.LANES - 1),
                         kind: (idx % 4 === 0) ? 'magnet' : 'shield' });
-      d += 66;
+      d += 54;
     } else {
       /* ---- ZONA TURBO ------------------------------------------------------
          The reward stretch, and the fastest part of the run. Instead of one
@@ -7054,7 +7123,11 @@ function generateCourse(seed) {
          STAGGERED lane sequence, spaced off the local speed cap, so the player
          weaves through them and can hold TURBO x2 / x3 all the way across.
          Almost no hazards, coins on every pad, music goes huapango.        */
-      var slen = 300 + Math.floor(r() * 140);
+      /* TIGHTER than before (was 300-440). A turbo zone always overshoots its
+         nominal length by the tail of its last pad chain, so on the long course
+         the old numbers produced 450-640 unit reward stretches - which is where
+         the room for the 4th ZONA TURBO and the extra hazard sections went. */
+      var slen = 190 + Math.floor(r() * 110);
       sectionPlan.push({ d: d - 50, text: '¡ZONA TURBO!', sub: '', zone: 'turbo' });
       turboStarts.push(d);
       var end2 = d + slen;
@@ -7124,15 +7197,18 @@ function generateCourse(seed) {
      Anchored to real landmarks (the first TRÁFICO section, the boundary line,
      the last turbo zone of the second half, the far end of the deck) so they
      land where they mean something rather than at arbitrary distances.     */
-  momentPlan.push({ d: firstTrafficD ? Math.max(200, firstTrafficD - 30) : 560, kind: 'wave' });
-  momentPlan.push({ d: CFG.BOUNDARY_D - 250, kind: 'police' });
-  momentPlan.push({ d: CFG.BOUNDARY_D + 120, kind: 'birds' });
+  /* On a 4400-unit deck these have to be pushed APART or all five land in the
+     middle third. Every anchor is scaled with the course, so the five set-
+     pieces sit at roughly 20 / 40 / 52 / 68 / 87 percent of the crossing. */
+  momentPlan.push({ d: firstTrafficD ? Math.max(200, firstTrafficD - 30) : bridgeD(560), kind: 'wave' });
+  momentPlan.push({ d: CFG.BOUNDARY_D - bridgeD(250), kind: 'police' });
+  momentPlan.push({ d: CFG.BOUNDARY_D + bridgeD(120), kind: 'birds' });
   var windD = 0;
   for (var ts = 0; ts < turboStarts.length; ts++) {
-    if (turboStarts[ts] > CFG.BOUNDARY_D + 260) { windD = turboStarts[ts] + 80; break; }
+    if (turboStarts[ts] > CFG.BOUNDARY_D + bridgeD(260)) { windD = turboStarts[ts] + 80; break; }
   }
-  momentPlan.push({ d: windD || (CFG.BOUNDARY_D + 520), kind: 'wind' });
-  momentPlan.push({ d: CFG.DECK_END - 420, kind: 'heli' });
+  momentPlan.push({ d: windD || (CFG.BOUNDARY_D + bridgeD(520)), kind: 'wind' });
+  momentPlan.push({ d: CFG.DECK_END - bridgeD(420), kind: 'heli' });
   momentPlan.sort(function (a, b) { return a.d - b.d; });
 
   // ---- the three jumps: boost run-up, callout, coin arc, coin reward on landing
@@ -7423,8 +7499,28 @@ function fxConfetti(pos, n) {
 /* ================================================================
    11. AUDIO  -  WebAudio oscillators only, no files
    ================================================================ */
-var AC = null, masterGain = null, engineGain = null, engineFilt = null,
+var AC = null, masterGain = null, masterLimiter = null,
+    engineGain = null, engineFilt = null,
     engOsc = null, engSub = null, noiseBuf = null, audioReady = false;
+
+/* THE MASTER CHAIN.
+   Everything - engine, SFX and the whole band - lands on masterGain, and
+   masterGain goes through a limiter before the speakers. Without it a crash
+   landing on top of a brass hit on top of a grito clips; with it the peak is
+   bounded whatever fires at once, which is what lets the music sit as loud as
+   it does. */
+var MASTER_LEVEL = 0.62;
+function musMakeLimiter(ctx) {
+  var c = ctx.createDynamicsCompressor();
+  try {
+    c.threshold.value = -6;      // dB
+    c.ratio.value = 8;
+    c.knee.value = 6;
+    c.attack.value = 0.003;
+    c.release.value = 0.12;
+  } catch (e) { }
+  return c;
+}
 
 function initAudio() {
   if (AC) return;
@@ -7433,8 +7529,10 @@ function initAudio() {
   try { AC = new Ctx(); } catch (e) { AC = null; return; }
 
   masterGain = AC.createGain();
-  masterGain.gain.value = 0.5;
-  masterGain.connect(AC.destination);
+  masterGain.gain.value = MASTER_LEVEL;
+  masterLimiter = musMakeLimiter(AC);
+  masterGain.connect(masterLimiter);
+  masterLimiter.connect(AC.destination);
 
   // --- engine: saw + square sub through a lowpass, pitch tracks speed
   engineGain = AC.createGain(); engineGain.gain.value = 0.0001;
@@ -7455,11 +7553,10 @@ function initAudio() {
   var ch = noiseBuf.getChannelData(0);
   for (var i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
 
-  // --- music bus:  notes -> bus (per-mode level) -> duck -> master
-  MUS.duck = AC.createGain(); MUS.duck.gain.value = 1;
-  MUS.duck.connect(masterGain);
-  MUS.bus = AC.createGain(); MUS.bus.gain.value = 0.0001;
-  MUS.bus.connect(MUS.duck);
+  /* --- music bus tree:
+       voice -> section gain (drums / bass / brass / lead)
+             -> MUS.bus (per-mode level) -> MUS.duck -> master -> limiter    */
+  musAttachBuses(musBuildBuses(AC, masterGain));
   MUS.nextT = AC.currentTime;
   if (!MUS.timer) {
     try { MUS.timer = window.setInterval(musTick, MUS_TICK); } catch (eT) { MUS.timer = null; }
@@ -7562,12 +7659,42 @@ var SFX = {
   land:  function () { noiseBurst(0.32, 500, 90, 0.26, 'lowpass'); tone(90, 0.24, 'sine', 0.20, 50); },
   blip:  function () { tone(760, 0.07, 'square', 0.07); },
   lane:  function () { tone(430, 0.05, 'triangle', 0.05); },
-  /* the classic runner "ding", one semitone higher for each coin in the
-     current streak (capped) so a long clean trail literally rises in pitch */
+  /* THE COIN CHIME.
+     Rounder and fuller than the old two-triangle ding: two SINES a perfect
+     fifth apart with a soft 12 ms attack for the body, and a short bright
+     triangle ping an octave and a fifth above it for the sparkle. ~120 ms
+     total, and a semitone higher for each coin in the current streak (capped)
+     so a long clean trail literally rises in pitch. Deliberately a touch
+     louder than the old one - the absorb is the reward moment. */
   coin: function (step) {
+    if (!audioReady) return;
     var s = Math.pow(2, clamp(step || 0, 0, 12) / 12);
-    tone(1180 * s, 0.06, 'triangle', 0.10);
-    tone(1760 * s, 0.15, 'triangle', 0.09, null, 0.05);
+    var t = now();
+    var f0 = 784.0 * s;                       // G5
+    var body = AC.createGain();
+    body.gain.setValueAtTime(0.0001, t);
+    body.gain.linearRampToValueAtTime(0.20, t + 0.012);      // soft attack
+    body.gain.exponentialRampToValueAtTime(0.0001, t + 0.125);
+    body.connect(masterGain);
+    var oA = AC.createOscillator(); oA.type = 'sine';
+    oA.frequency.setValueAtTime(f0, t);
+    var oB = AC.createOscillator(); oB.type = 'sine';
+    oB.frequency.setValueAtTime(f0 * 1.5, t);                // the fifth
+    var gB = AC.createGain(); gB.gain.value = 0.7;
+    oA.connect(body); oB.connect(gB); gB.connect(body);
+    var oP = AC.createOscillator(); oP.type = 'triangle';    // the bright ping
+    oP.frequency.setValueAtTime(f0 * 3.0, t);
+    var gP = AC.createGain();
+    gP.gain.setValueAtTime(0.0001, t);
+    gP.gain.exponentialRampToValueAtTime(0.085, t + 0.006);
+    gP.gain.exponentialRampToValueAtTime(0.0001, t + 0.080);
+    oP.connect(gP); gP.connect(masterGain);
+    oA.start(t); oB.start(t); oP.start(t);
+    oA.stop(t + 0.15); oB.stop(t + 0.15); oP.stop(t + 0.10);
+    oA.onended = function () {
+      try { oA.disconnect(); oB.disconnect(); oP.disconnect();
+            body.disconnect(); gB.disconnect(); gP.disconnect(); } catch (e) { }
+    };
   },
   /* power-up: a bright two-note blue chime */
   power: function () {
@@ -7714,403 +7841,696 @@ var SFX = {
 };
 
 /* ================================================================
-   11b. MUSIC  -  a live-synthesized NORTEÑO / MARIACHI soundtrack
+   11b. MUSIC  -  a live-synthesized BANDA SINALOENSE soundtrack
 
-   The old loop was a generic 4/4 chiptune march with a "trumpet" on top. This
-   is written from the idiom instead:
+   The old loop was a norteño polka: accordion, bajo sexto chop, shaker. It
+   sounded like a waltz in a cantina, which is not what a 300 km/h border dash
+   wants. This is the OTHER Mexican band tradition - banda sinaloense /
+   tecnobanda, the quebradita drive - and it is built out of the four things
+   that make that sound:
 
-     GROOVE      norteño polka in 2/4 at ~122 BPM. The bass plays the tuba /
-                 bajo sexto "oom" on the beat, alternating ROOT and FIFTH, and
-                 the bajo sexto answers with a short muted "pah" chop on every
-                 "and". Shaker on the eighths. That oom-pah is the sound.
-     ACCORDION   the signature norteño lead: two sawtooths detuned +/-7 cents
-                 through a mild lowpass with a slow 5.5 Hz vibrato, playing
-                 fast diatonic runs, triplet pickups and grace notes, phrasing
-                 onto the dominant and resolving.
-     TRUMPETS    mariachi pair in PARALLEL THIRDS - square + triangle through a
-                 bandpass around 1.5-2 kHz, vibrato on the held notes - in
-                 call-and-response with the accordion: four bars of accordion,
-                 four bars of trumpets, all the way round a 16-bar form.
-     HARMONY     G major. I - V7 - I and I - IV - V7 - I, with the bass walking
-                 up chromatically into the dominant (C - C# - D).
-     INTENSE     boosts, jumps and turbo zones flip the band into a huapango:
-                 the bar becomes 6/8 and the accents alternate 3+3 against
-                 2+2+2 - a real hemiola - with a tarola snare crack on the
-                 "and" of two.
+     TUBA        the sousaphone bass, and the signature of the whole genre.
+                 Root on beat 1, fifth on beat 2, and a fast four-note RUN into
+                 every chord change, with the odd octave leap. Two sines
+                 (fundamental + 2nd harmonic at 0.4) plus a soft saw at 0.15
+                 through a lowpass at 350 Hz, 25 ms attack, punchy 180 ms
+                 decay, and a few cents of downward pitch bend on the attack -
+                 the "blat" a real tuba makes.
+     DRUMS       tambora (the big bass drum) on every beat, with a cymbal
+                 crash on beat 1 of bars 1 / 5 / 9 / 13; tarola (snare) cracks
+                 on the off-beats and 16th-note rolls into every phrase end;
+                 shaker on the eighths. These are LOUD and they are what makes
+                 the track read as action rather than as folklore.
+     BRASS       3-voice section stabs (root / 3rd / 5th), detuned saws through
+                 a bandpass that sweeps 900 -> 1700 Hz, fast attack, short
+                 release, with a noise "breath" on the transient.
+     LEAD        trumpet + clarinet in parallel THIRDS. Trumpet = saw + square
+                 through a lowpass that opens with velocity, 5.5 Hz vibrato on
+                 held notes, 16th runs, triplet pickups, grace notes. Clarinet
+                 = square (odd harmonics) through a warm lowpass, a diatonic
+                 third below.
 
-   Timing is unchanged: a 100 ms lookahead scheduler queues every note that
-   falls inside the next ~200 ms against AudioContext.currentTime, every voice
-   builds a tiny graph that disconnects itself on ended, and nothing about the
-   music reads the render loop. Voice count is kept at roughly eight
-   oscillators at once by making the accordion and the trumpets alternate
-   rather than overlap.
+   FORM      G major, 2/4 at 150 BPM. Sixteen bars:
+               0-3   melody A            I  - IV - V7 - I
+               4-7   brass response      I  - vi - IV - V7   (ends on the V)
+               8-11  melody A'           I  - IV - V7 - I
+               12-15 turnaround          vi - V/V - V7 - I   + a big brass hit
+             The secondary dominant (A7 = V of V) in bar 13 and the chromatic
+             tuba walk-ups are where the corrido flavour comes from.
+   TITLE     120 BPM. A brass fanfare - a rising run into a held chord in
+             thirds - and then a lighter groove with no stabs.
+   INTENSE   160 BPM. Four bars of huapango 6/8 hemiola (3+3 accents against
+             the 2+2+2 of the underlying 2/4) then four bars back in 2/4,
+             doubled tarola rolls, a high trumpet countermelody, and a grito
+             every sixteen bars.
+   CUSTOMS   an ominous drone over a slow tuba pedal. No drums, no band.
+
+   MIX       masterGain -> DynamicsCompressor(-6 dB, 8:1) -> destination, so
+             the peak can never run away. Inside the music bus the drums and
+             the bass sit at unity, the brass at 0.6 and the lead at 0.4
+             (~ -8 dB below the drums+bass sum), and the tuba goes through a
+             40 Hz highpass so the low end stays tight instead of muddy.
+
+   TIMING is unchanged from the previous engine: a 100 ms wake-up schedules
+   every slot that falls inside the next 200 ms against AudioContext.
+   currentTime, a mode change only ever lands on a bar line, every voice builds
+   a tiny graph that disconnects itself on ended, and nothing here reads the
+   render loop. musStepOnce() is the single place the cursor advances, and it
+   is what both the live scheduler and the offline renderer call.
    ================================================================ */
 var MUS = {
   on: true, mode: 'off', pending: null, bar: 0, slot: 0, step: 0, nextT: 0,
-  bus: null, duck: null, timer: null, notes: 0, err: 0, lastErr: ''
+  bus: null, duck: null, gDrum: null, gBass: null, gBrass: null, gLead: null,
+  timer: null, notes: 0, err: 0, lastErr: '',
+  introDone: false, log: null, logOn: false
 };
 var MUSIC_KEY = 'rescoRunMusic_v1';
 var MUS_LOOK = 0.20;            // schedule this far ahead (seconds)
 var MUS_TICK = 100;             // scheduler wake-up (ms)
 
-/* ---- harmony -------------------------------------------------------------
-   G major. Bass notes are tuba register; the triad is the bajo sexto chop. */
-var MUS_CHORDS = {
-  G:  { root: 43, fifth: 50, triad: [67, 71, 74], scale: [67, 69, 71, 72, 74, 76, 78] },
-  C:  { root: 48, fifth: 43, triad: [64, 67, 72], scale: [67, 69, 71, 72, 74, 76, 77] },
-  D7: { root: 50, fifth: 45, triad: [66, 69, 72], scale: [66, 69, 71, 72, 74, 76, 78] }
-};
-/* the 16-bar form. `walk` marks a bar whose last beat walks chromatically up
-   into the root of the next one - the classic norteño lead-in to the V. */
-var MUS_FORM = [
-  { c: 'G' }, { c: 'G', walk: 1 }, { c: 'D7' }, { c: 'G' },
-  { c: 'G' }, { c: 'C' },          { c: 'D7' }, { c: 'G' },
-  { c: 'G' }, { c: 'C', walk: 1 }, { c: 'D7' }, { c: 'G' },
-  { c: 'G' }, { c: 'C', walk: 1 }, { c: 'D7' }, { c: 'G' }
-];
-/* CALL AND RESPONSE: bars 0-3 and 8-11 are the accordion, bars 4-7 and 12-15
-   are the trumpets. One entry = [16th-note slot, MIDI note, length in slots]. */
-var MUS_LEAD = [
-  /* 0  accordion, pickup run up the G scale        */[[0, 74, 1], [1, 76, 1], [2, 78, 2], [4, 79, 2], [6, 83, 2]],
-  /* 1                                              */[[0, 86, 2], [2, 83, 1], [3, 81, 1], [4, 79, 2], [6, 78, 2]],
-  /* 2  onto the dominant                           */[[0, 78, 1], [1, 79, 1], [2, 81, 2], [4, 78, 2], [6, 74, 2]],
-  /* 3  and resolve                                 */[[0, 79, 4], [4, 74, 2], [6, 71, 2]],
-  /* 4  trumpets answer                             */[[0, 79, 2], [2, 79, 1], [3, 78, 1], [4, 76, 2], [6, 74, 2]],
-  /* 5                                              */[[0, 72, 2], [2, 76, 2], [4, 79, 2], [6, 76, 2]],
-  /* 6                                              */[[0, 78, 2], [2, 81, 2], [4, 79, 1], [5, 78, 1], [6, 76, 2]],
-  /* 7                                              */[[0, 79, 4], [4, 71, 2], [6, 74, 2]],
-  /* 8  accordion, an octave of daylight higher     */[[0, 83, 1], [1, 86, 1], [2, 88, 2], [4, 86, 1], [5, 83, 1], [6, 79, 2]],
-  /* 9  triplet-feel turn                           */[[0, 84, 1], [1, 81, 1], [2, 79, 2], [4, 84, 2], [6, 81, 2]],
-  /* 10 running down onto the V7                    */[[0, 83, 1], [1, 81, 1], [2, 79, 1], [3, 78, 1], [4, 81, 2], [6, 78, 2]],
-  /* 11                                             */[[0, 79, 3], [3, 78, 1], [4, 76, 2], [6, 74, 2]],
-  /* 12 trumpets, the big answer                    */[[0, 86, 2], [2, 83, 2], [4, 79, 2], [6, 83, 2]],
-  /* 13                                             */[[0, 84, 2], [2, 81, 2], [4, 79, 4]],
-  /* 14                                             */[[0, 81, 1], [1, 83, 1], [2, 86, 2], [4, 83, 2], [6, 81, 2]],
-  /* 15 turnaround                                  */[[0, 79, 6], [6, 74, 2]]
-];
-/* bars the ACCORDION owns; the rest belong to the trumpets */
-function musIsAccordionBar(b) { return (b < 4) || (b >= 8 && b < 12); }
+/* the sub-bus levels. Drums + bass at unity, lead ~ -8 dB under them. */
+var MUS_MIX = { drum: 1.00, bass: 0.92, brass: 1.00, lead: 0.82 };
 
-/* the diatonic third BELOW, in G major, by pitch class - this is what makes
-   the trumpet pair sound like mariachi rather than like two synths */
+/* Build the music bus tree on a given context. Factored out so the OFFLINE
+   renderer can stand up an identical graph and run the identical scheduler. */
+function musBuildBuses(ctx, dest) {
+  var duck = ctx.createGain(); duck.gain.value = 1;
+  duck.connect(dest);
+  var bus = ctx.createGain(); bus.gain.value = 0.0001;
+  bus.connect(duck);
+  var gDrum = ctx.createGain(); gDrum.gain.value = MUS_MIX.drum; gDrum.connect(bus);
+  var gBrass = ctx.createGain(); gBrass.gain.value = MUS_MIX.brass; gBrass.connect(bus);
+  var gLead = ctx.createGain(); gLead.gain.value = MUS_MIX.lead; gLead.connect(bus);
+  /* the bass gets a 40 Hz highpass in front of it: banda tuba lives at
+     82-165 Hz and everything under that is mud on a phone speaker */
+  var gBass = ctx.createGain(); gBass.gain.value = MUS_MIX.bass;
+  var hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 40; hp.Q.value = 0.7;
+  hp.connect(gBass); gBass.connect(bus);
+  return { duck: duck, bus: bus, gDrum: gDrum, gBass: hp, gBrass: gBrass, gLead: gLead,
+           bassOut: gBass };
+}
+function musAttachBuses(n) {
+  MUS.duck = n.duck; MUS.bus = n.bus; MUS.gDrum = n.gDrum;
+  MUS.gBass = n.gBass; MUS.gBrass = n.gBrass; MUS.gLead = n.gLead;
+}
+
+/* ---- harmony -------------------------------------------------------------
+   G major. `root` / `fifth` are tuba register (82-165 Hz); `triad` is the
+   brass section voicing; `scale` is what the tuba runs walk through. */
+var MUS_CHORDS = {
+  G:  { root: 43, fifth: 50, triad: [67, 71, 74] },     // I    G2 / D3 / G4 B4 D5
+  C:  { root: 48, fifth: 43, triad: [72, 76, 79] },     // IV   C3 / G2 / C5 E5 G5
+  D7: { root: 50, fifth: 45, triad: [74, 78, 81] },     // V7   D3 / A2 / D5 F#5 A5
+  Em: { root: 40, fifth: 47, triad: [64, 67, 71] },     // vi   E2 / B2 / E4 G4 B4
+  A7: { root: 45, fifth: 52, triad: [69, 73, 76] }      // V/V  A2 / E3 / A4 C#5 E5
+};
+/* THE SIXTEEN-BAR FORM.
+     run  = the tuba plays a four-note walk-up into the NEXT chord on beat 2
+     fill = a 16th-note tarola roll through beat 2, into the next phrase
+     hit  = a big brass hit + crash on beat 1
+     lead = which section owns the bar: 'M' melody, 'B' brass */
+var MUS_FORM = [
+  { c: 'G',  lead: 'M' },
+  { c: 'C',  lead: 'M' },
+  { c: 'D7', lead: 'M', run: 1 },
+  { c: 'G',  lead: 'M', fill: 1 },
+  { c: 'G',  lead: 'B' },
+  { c: 'Em', lead: 'B' },
+  { c: 'C',  lead: 'B' },
+  { c: 'D7', lead: 'B', fill: 1, run: 1 },
+  { c: 'G',  lead: 'M' },
+  { c: 'C',  lead: 'M' },
+  { c: 'D7', lead: 'M', run: 1 },
+  { c: 'G',  lead: 'M', fill: 1 },
+  { c: 'Em', lead: 'B' },
+  { c: 'A7', lead: 'B', run: 1 },
+  { c: 'D7', lead: 'B', run: 1 },
+  { c: 'G',  lead: 'B', fill: 1, hit: 1 }
+];
+/* THE MELODY, in 16th-note slots. One entry = [slot, MIDI, length in slots,
+   graceFlag]. Bars 0-3 are phrase A, bars 8-11 are A' an octave of daylight
+   brighter; the brass owns everything else. */
+var MUS_LEAD = [
+  /*  0 G   */[[0, 79, 2, 1], [2, 78, 1], [3, 79, 1], [4, 83, 2], [6, 81, 2]],
+  /*  1 C   */[[0, 79, 1], [1, 81, 1], [2, 83, 2], [4, 84, 2, 1], [6, 83, 2]],
+  /*  2 D7  */[[0, 86, 1], [1, 84, 1], [2, 83, 1], [3, 81, 1], [4, 78, 2], [6, 74, 2]],
+  /*  3 G   */[[0, 79, 4], [4, 76, 2]],
+  /*  4     */[], /*  5 */[], /*  6 */[], /*  7 */[],
+  /*  8 G   */[[0, 83, 1], [1, 86, 1], [2, 88, 2, 1], [4, 86, 1], [5, 84, 1], [6, 83, 2]],
+  /*  9 C   */[[0, 84, 2], [2, 83, 1], [3, 81, 1], [4, 79, 2], [6, 84, 2]],
+  /* 10 D7  */[[0, 86, 1], [1, 84, 1], [2, 83, 1], [3, 81, 1], [4, 83, 2], [6, 78, 2]],
+  /* 11 G   */[[0, 79, 3], [3, 78, 1], [4, 76, 2]],
+  /* 12     */[], /* 13 */[], /* 14 */[], /* 15 */[]
+];
+/* TRIPLET PICKUPS into the next phrase, on the last beat of bars 3, 7, 11.
+   [slot, n1, n2, n3] - three notes across two 16th slots, which is what makes
+   them read as triplets against the 2/4. */
+var MUS_TRIP = { 3: [6, 74, 76, 78], 7: [6, 78, 79, 81], 11: [6, 74, 76, 78] };
+/* the brass section's answer: which slots get a stab, and how the voicing is
+   inverted, per bar of the response phrases */
+var MUS_STAB = [0, 2, 4, 6];
+
+/* the diatonic third BELOW, in G major, by pitch class. This is what makes the
+   trumpet + clarinet pair sound like a band section rather than two synths. */
 var MUS_THIRD = { 0: -3, 2: -3, 4: -4, 6: -4, 7: -3, 9: -3, 11: -4, 5: -4 };
 function musThird(n) {
   var pc = ((n % 12) + 12) % 12;
   return MUS_THIRD[pc] === undefined ? -3 : MUS_THIRD[pc];
 }
 function musHz(n) { return 440 * Math.pow(2, (n - 69) / 12); }
-/* norteño polka sits at 118-126 BPM; the huapango leans on the top of it */
-function musBpm() { return MUS.mode === 'intense' ? 126 : (MUS.mode === 'title' ? 118 : 122); }
+/* banda runs fast: 150 for the body of the run, 160 for the huapango, 120 on
+   the title screen, and the customs drone crawls */
+function musBpm() {
+  if (MUS.mode === 'intense') return 160;
+  if (MUS.mode === 'title') return 120;
+  if (MUS.mode === 'customs') return 60;
+  return 150;
+}
 function musLevel() {
   if (!MUS.on) return 0.0001;
-  if (MUS.mode === 'title') return 0.15;
-  if (MUS.mode === 'intense') return 0.30;
-  if (MUS.mode === 'run') return 0.26;
+  if (MUS.mode === 'title') return 0.27;
+  if (MUS.mode === 'intense') return 0.40;
+  if (MUS.mode === 'run') return 0.37;
+  if (MUS.mode === 'customs') return 0.24;
   return 0.0001;
 }
 /* THE GRID.
-   Polka: 2/4, eight 16th-note slots to the bar.
-   Huapango: 6/8, six eighth-note slots to the bar, on the same eighth pulse,
-   which is exactly what makes the 3+3 / 2+2+2 accents read as a hemiola. */
-function musGrid() {
+   2/4 with eight 16th-note slots to the bar everywhere except:
+     intense, first four bars of every eight -> 6/8 with six slots to the bar,
+     each an eighth of a TRIPLET, so a 6/8 bar lasts exactly as long as the 2/4
+     bar it replaces. That identity is the whole point: three even accents in
+     the time of two is a real hemiola, not a tempo change.
+     customs -> two slow slots to the bar, one drone gesture each. */
+function musGrid(bar) {
   var beat = 60 / musBpm();
-  if (MUS.mode === 'intense') return { spb: 6, sdur: beat * 0.5 };
-  return { spb: 8, sdur: beat * 0.25 };
+  if (MUS.mode === 'customs') return { spb: 2, sdur: beat * 1.0, six: false };
+  if (MUS.mode === 'intense' && (bar & 7) < 4) return { spb: 6, sdur: beat / 3, six: true };
+  return { spb: 8, sdur: beat * 0.25, six: false };
 }
 
-/* every voice below builds its own tiny graph, plays once and unhooks itself */
-function musOsc(type, f0, t, dur, gain, dest, f1) {
-  var o = AC.createOscillator();
-  o.type = type;
-  o.frequency.setValueAtTime(f0, t);
-  if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(18, f1), t + dur);
-  var g = AC.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.014);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(dest || MUS.bus);
-  o.start(t); o.stop(t + dur + 0.03);
-  o.onended = function () { try { o.disconnect(); g.disconnect(); } catch (e) { } };
-  MUS.notes++;
-  return o;
+/* the scheduled-note log, for the offline harness. Off in normal play. */
+function musLog(voice, midi, t, dur, gain) {
+  if (!MUS.logOn || !MUS.log || MUS.log.length > 6000) return;
+  MUS.log.push({ v: voice, n: midi, t: +t.toFixed(4), d: +dur.toFixed(4), g: +gain.toFixed(4) });
 }
 
-/* ---- TUBA / BAJO SEXTO BASS ----------------------------------------------
-   The "oom". A fat low triangle with a sine an octave under it and a soft
-   14 ms attack, so it breathes like a tuba instead of clicking like a pluck. */
-function musBass(n, t, dur) {
+/* ---- TUBA / SOUSAPHONE ---------------------------------------------------
+   Fundamental sine + its 2nd harmonic at 0.4 + a soft saw at 0.15, all through
+   a 350 Hz lowpass. 25 ms attack, punchy 180 ms decay, and the attack starts
+   about a semitone sharp and falls onto the note in 45 ms, which is the
+   "blat" of a real sousaphone. */
+function musTuba(n, t, dur, gain) {
   var f = musHz(n);
-  var o1 = AC.createOscillator(); o1.type = 'triangle';
-  var o2 = AC.createOscillator(); o2.type = 'sine';
-  o1.frequency.setValueAtTime(f, t);
-  o2.frequency.setValueAtTime(f * 0.5, t);
+  var bend = f * 1.055;
+  var d1 = Math.min(0.18, Math.max(0.05, dur * 0.55));
   var g = AC.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(0.34, t + 0.030);      // soft attack
-  g.gain.setValueAtTime(0.34, t + Math.max(0.05, dur * 0.55));
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  var g2 = AC.createGain(); g2.gain.value = 0.55;
-  var lp = AC.createBiquadFilter(); lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(420, t); lp.Q.value = 0.7;
-  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(MUS.bus);
-  o1.start(t); o2.start(t);
-  o1.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+  g.gain.linearRampToValueAtTime(gain, t + 0.025);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * 0.30), t + d1);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(d1 + 0.04, dur));
+  var lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(350, t); lp.Q.value = 0.6;
+  g.connect(lp); lp.connect(MUS.gBass);
+  var o1 = AC.createOscillator(); o1.type = 'sine';
+  o1.frequency.setValueAtTime(bend, t);
+  o1.frequency.exponentialRampToValueAtTime(f, t + 0.045);
+  var o2 = AC.createOscillator(); o2.type = 'sine';
+  o2.frequency.setValueAtTime(bend * 2, t);
+  o2.frequency.exponentialRampToValueAtTime(f * 2, t + 0.045);
+  var g2 = AC.createGain(); g2.gain.value = 0.40;
+  var o3 = AC.createOscillator(); o3.type = 'sawtooth';
+  o3.frequency.setValueAtTime(bend, t);
+  o3.frequency.exponentialRampToValueAtTime(f, t + 0.045);
+  var g3 = AC.createGain(); g3.gain.value = 0.15;
+  o1.connect(g); o2.connect(g2); g2.connect(g); o3.connect(g3); g3.connect(g);
+  var stop = t + Math.max(d1 + 0.06, dur) + 0.03;
+  o1.start(t); o2.start(t); o3.start(t);
+  o1.stop(stop); o2.stop(stop); o3.stop(stop);
   o1.onended = function () {
-    try { o1.disconnect(); o2.disconnect(); g.disconnect(); g2.disconnect(); lp.disconnect(); } catch (e) { }
+    try { o1.disconnect(); o2.disconnect(); o3.disconnect();
+          g.disconnect(); g2.disconnect(); g3.disconnect(); lp.disconnect(); } catch (e) { }
   };
-  MUS.notes += 2;
+  MUS.notes += 3;
+  musLog('tuba', n, t, dur, gain);
+}
+/* THE WALK-UP.
+   Four eighth notes into the next chord's root, always landing a semitone away
+   from it so the downbeat resolves. Ascending when the next root is above,
+   descending when it is below - which is the run every banda tuba player makes
+   at a chord change, and the single most recognisable thing the instrument
+   does after the oom-pah itself. */
+function musTubaRun(fromCh, toRoot) {
+  var from = fromCh.root;
+  if (from <= toRoot) return [toRoot - 7, toRoot - 5, toRoot - 3, toRoot - 1];
+  return [from, from - 2, from - 4, toRoot + 1];
 }
 
-/* ---- BAJO SEXTO / VIHUELA CHOP -------------------------------------------
-   The "pah" on the off-beat: three saw plucks through a lowpass with a very
-   fast decay, so it reads as a muted strum and never as a held chord. */
-function musChop(triad, t, dur, gain) {
-  var lp = AC.createBiquadFilter(); lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(2100, t);
-  lp.frequency.exponentialRampToValueAtTime(700, t + dur);
-  lp.Q.value = 1.1;
+/* ---- DRUMS ---------------------------------------------------------------
+   tambora = a sine swept 90 -> 45 Hz over 120 ms, plus a short filtered click
+   so it still punches through a phone speaker. The cymbal on the accent beats
+   is a noise burst through a highpass. */
+function musTambora(t, gain, crash) {
+  var o = AC.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(90, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
   var g = AC.createGain();
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+  o.connect(g); g.connect(MUS.gDrum);
+  o.start(t); o.stop(t + 0.17);
+  o.onended = function () { try { o.disconnect(); g.disconnect(); } catch (e) { } };
+  MUS.notes++;
+  if (noiseBuf) {
+    var src = AC.createBufferSource(); src.buffer = noiseBuf;
+    src.playbackRate.value = 0.55;
+    var lp = AC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.setValueAtTime(1400, t); lp.Q.value = 0.8;
+    var cg = AC.createGain();
+    cg.gain.setValueAtTime(0.0001, t);
+    cg.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * 0.45), t + 0.003);
+    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    src.connect(lp); lp.connect(cg); cg.connect(MUS.gDrum);
+    src.start(t); src.stop(t + 0.06);
+    src.onended = function () { try { src.disconnect(); lp.disconnect(); cg.disconnect(); } catch (e) { } };
+  }
+  if (crash && noiseBuf) {
+    var cs = AC.createBufferSource(); cs.buffer = noiseBuf;
+    cs.playbackRate.value = 1.6;
+    var hp = AC.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.setValueAtTime(5200, t); hp.Q.value = 0.5;
+    var hg = AC.createGain();
+    hg.gain.setValueAtTime(0.0001, t);
+    hg.gain.exponentialRampToValueAtTime(0.26, t + 0.004);
+    hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.60);
+    cs.connect(hp); hp.connect(hg); hg.connect(MUS.gDrum);
+    cs.start(t); cs.stop(t + 0.70);
+    cs.onended = function () { try { cs.disconnect(); hp.disconnect(); hg.disconnect(); } catch (e) { } };
+  }
+  musLog('tambora', crash ? 1 : 0, t, 0.14, gain);
+}
+/* tarola: the snare. Noise through a bandpass at ~2 kHz, 80 ms. */
+function musTarola(t, gain) {
+  if (!noiseBuf) return;
+  var src = AC.createBufferSource(); src.buffer = noiseBuf;
+  src.playbackRate.value = 1.25;
+  var bp = AC.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.setValueAtTime(2000, t); bp.Q.value = 0.9;
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.080);
+  src.connect(bp); bp.connect(g); g.connect(MUS.gDrum);
+  src.start(t); src.stop(t + 0.11);
+  src.onended = function () { try { src.disconnect(); bp.disconnect(); g.disconnect(); } catch (e) { } };
+  MUS.notes++;
+  musLog('tarola', 0, t, 0.08, gain);
+}
+/* shaker / hi-hat on the eighths */
+function musShaker(t, gain) {
+  if (!noiseBuf) return;
+  var src = AC.createBufferSource(); src.buffer = noiseBuf;
+  src.playbackRate.value = 1.9;
+  var hp = AC.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.setValueAtTime(7000, t);
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+  src.connect(hp); hp.connect(g); g.connect(MUS.gDrum);
+  src.start(t); src.stop(t + 0.07);
+  src.onended = function () { try { src.disconnect(); hp.disconnect(); g.disconnect(); } catch (e) { } };
+  MUS.notes++;
+}
+/* a 16th-note tarola roll across one beat, swelling into the phrase end */
+function musRoll(t, sdur, n, gain) {
+  for (var i = 0; i < n; i++) {
+    musTarola(t + i * sdur, gain * (0.45 + 0.55 * (i / Math.max(1, n - 1))));
+  }
+}
+
+/* ---- BRASS SECTION STAB --------------------------------------------------
+   Three detuned saws (root / 3rd / 5th) through a bandpass that snaps from
+   900 Hz up to 1700 and falls back, a fast attack and a short release, plus a
+   little noise "breath" on the transient. Brighter and punchier than the old
+   trumpet, and the whole section is one filter, one envelope. */
+function musBrass(triad, t, dur, gain, fat, thin) {
+  var bp = AC.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 0.7;
+  var up = Math.min(0.05, Math.max(0.012, dur * 0.35));
+  bp.frequency.setValueAtTime(900, t);
+  bp.frequency.linearRampToValueAtTime(1700, t + up);
+  bp.frequency.exponentialRampToValueAtTime(850, t + dur);
+  var g = AC.createGain();
+  var pk = Math.max(0.0002, gain);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(pk, t + 0.012);
+  g.gain.setValueAtTime(pk, t + Math.max(0.02, dur * 0.5));
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  lp.connect(g); g.connect(MUS.bus);
-  var oscs = [];
-  for (var i = 0; i < triad.length; i++) {
-    var o = AC.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.setValueAtTime(musHz(triad[i]), t + i * 0.008);   // strum spread
-    o.connect(lp);
-    o.start(t + i * 0.008); o.stop(t + dur + 0.015);
+  bp.connect(g); g.connect(MUS.gBrass);
+  var oscs = [], det = [-6, 5, -3, 9];
+  /* THE OSCILLATOR BUDGET.
+     A full stab is three detuned saws, a phrase-end hit four. `thin` drops it
+     to two - root and fifth - and is used for the brass answers that land on
+     top of a lead phrase, which is what keeps the whole band inside ~10
+     simultaneous oscillators however the parts collide. */
+  var nv = fat ? 4 : (thin ? 2 : 3);
+  for (var i = 0; i < nv; i++) {
+    var o = AC.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(musHz(triad[(thin && i === 1) ? (triad.length - 1) : (i % triad.length)]), t);
+    o.detune.setValueAtTime(det[i], t);
+    o.connect(bp);
+    o.start(t); o.stop(t + dur + 0.03);
     oscs.push(o);
   }
   oscs[0].onended = function () {
-    try { for (var k = 0; k < oscs.length; k++) oscs[k].disconnect(); lp.disconnect(); g.disconnect(); } catch (e) { }
+    try { for (var k = 0; k < oscs.length; k++) oscs[k].disconnect();
+          bp.disconnect(); g.disconnect(); } catch (e) { }
   };
-  MUS.notes += triad.length;
+  MUS.notes += oscs.length;
+  if (noiseBuf) {                          // the breath
+    var src = AC.createBufferSource(); src.buffer = noiseBuf;
+    src.playbackRate.value = 1.4;
+    var hp = AC.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.setValueAtTime(1500, t);
+    var bg = AC.createGain();
+    bg.gain.setValueAtTime(0.0001, t);
+    bg.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * 0.30), t + 0.004);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.030);
+    src.connect(hp); hp.connect(bg); bg.connect(MUS.gBrass);
+    src.start(t); src.stop(t + 0.05);
+    src.onended = function () { try { src.disconnect(); hp.disconnect(); bg.disconnect(); } catch (e) { } };
+  }
+  musLog('brass', triad[0], t, dur, gain);
 }
 
-/* ---- THE ACCORDION -------------------------------------------------------
-   Two sawtooths detuned +/-7 cents through a mild lowpass, with a slow 5.5 Hz
-   vibrato that fades in. This is the single most identifiably norteño sound in
-   the whole track, and it carries every run and every turnaround. */
-function musAccordion(n, t, dur, gain) {
+/* ---- LEAD TRUMPET --------------------------------------------------------
+   Saw + square through a lowpass that OPENS with velocity - a hard note is a
+   bright note, which is most of what makes a synthesized trumpet believable -
+   with a 5.5 Hz vibrato that fades in on anything held. */
+function musTrumpetV(n, t, dur, gain, vel) {
   var f = musHz(n);
-  var o1 = AC.createOscillator(); o1.type = 'sawtooth';
-  var o2 = AC.createOscillator(); o2.type = 'sawtooth';
-  o1.frequency.setValueAtTime(f, t); o1.detune.setValueAtTime(-7, t);
-  o2.frequency.setValueAtTime(f, t); o2.detune.setValueAtTime(7, t);
-  var lp = AC.createBiquadFilter(); lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(Math.min(5200, f * 4.2), t);
-  lp.Q.value = 0.9;
+  var v = (vel === undefined) ? 1 : vel;
+  var open = clamp(f * (2.1 + 2.6 * v), 1100, 6500);
+  var lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.Q.value = 1.1;
+  lp.frequency.setValueAtTime(Math.max(700, open * 0.45), t);
+  lp.frequency.linearRampToValueAtTime(open, t + Math.min(0.05, dur * 0.35));
+  lp.frequency.exponentialRampToValueAtTime(Math.max(600, open * 0.40), t + dur);
   var g = AC.createGain();
+  var pk = Math.max(0.0002, gain);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(gain, t + 0.018);       // bellows, not a pluck
-  g.gain.setValueAtTime(gain, t + Math.max(0.04, dur - 0.05));
+  g.gain.exponentialRampToValueAtTime(pk, t + 0.014);
+  g.gain.setValueAtTime(pk, t + Math.max(0.02, dur - 0.045));
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(MUS.bus);
+  lp.connect(g); g.connect(MUS.gLead);
+  var o1 = AC.createOscillator(); o1.type = 'sawtooth';
+  o1.frequency.setValueAtTime(f, t);
+  var o2 = AC.createOscillator(); o2.type = 'square';
+  o2.frequency.setValueAtTime(f, t);
+  o2.detune.setValueAtTime(5, t);
+  var m2 = AC.createGain(); m2.gain.value = 0.45;
+  o1.connect(lp); o2.connect(m2); m2.connect(lp);
   var lfo = null, lg = null;
-  if (dur > 0.30) {
+  if (dur > 0.22) {
     lfo = AC.createOscillator(); lfo.type = 'sine';
     lfo.frequency.setValueAtTime(5.5, t);
     lg = AC.createGain();
     lg.gain.setValueAtTime(0.0001, t);
-    lg.gain.linearRampToValueAtTime(f * 0.008, t + dur * 0.7);
+    lg.gain.linearRampToValueAtTime(f * 0.010, t + dur * 0.65);
     lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
-    lfo.start(t); lfo.stop(t + dur + 0.02);
+    lfo.start(t); lfo.stop(t + dur + 0.03);
   }
   o1.start(t); o2.start(t);
-  o1.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+  o1.stop(t + dur + 0.03); o2.stop(t + dur + 0.03);
   o1.onended = function () {
-    try {
-      o1.disconnect(); o2.disconnect(); lp.disconnect(); g.disconnect();
-      if (lfo) { lfo.disconnect(); lg.disconnect(); }
-    } catch (e) { }
+    try { o1.disconnect(); o2.disconnect(); m2.disconnect(); lp.disconnect(); g.disconnect();
+          if (lfo) { lfo.disconnect(); lg.disconnect(); } } catch (e) { }
   };
   MUS.notes += 2;
+  musLog('trumpet', n, t, dur, gain);
 }
-
-/* ---- MARIACHI TRUMPET ----------------------------------------------------
-   Square + triangle through a bandpass parked around 1.5-2 kHz, with vibrato
-   on the held notes only so short stabs stay cheap. Always played as a PAIR
-   (see musTrumpetPair) a diatonic third apart. */
-function musTrumpet(f, t, dur, gain, thin) {
-  var o1 = AC.createOscillator(); o1.type = 'square';
-  o1.frequency.setValueAtTime(f, t);
-  var o2 = null, m2 = null;
-  var bp = AC.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.setValueAtTime(clamp(f * 2.2, 1200, 2100), t);
-  bp.Q.value = 0.75;
-  var g = AC.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.024);
-  g.gain.setValueAtTime(Math.max(0.0002, gain), t + Math.max(0.03, dur - 0.05));
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o1.connect(bp);
-  if (!thin) {
-    o2 = AC.createOscillator(); o2.type = 'triangle';
-    o2.frequency.setValueAtTime(f, t);
-    o2.detune.setValueAtTime(6, t);
-    m2 = AC.createGain(); m2.gain.value = 0.85;
-    o2.connect(m2); m2.connect(bp);
-  }
-  bp.connect(g); g.connect(MUS.bus);
-  var lfo = null, lg = null;
-  // only the LEAD trumpet gets a vibrato oscillator; the harmony voice rides
-  // the same phrase and does not need one, which keeps the section cheap
-  if (dur > 0.34 && !thin) {
-    lfo = AC.createOscillator(); lfo.type = 'sine';
-    lfo.frequency.setValueAtTime(5.4, t);
-    lg = AC.createGain();
-    lg.gain.setValueAtTime(0.0001, t);
-    lg.gain.linearRampToValueAtTime(f * 0.011, t + dur * 0.6);
-    lfo.connect(lg); lg.connect(o1.frequency);
-    if (o2) lg.connect(o2.frequency);
-    lfo.start(t); lfo.stop(t + dur + 0.02);
-  }
-  o1.start(t); o1.stop(t + dur + 0.02);
-  if (o2) { o2.start(t); o2.stop(t + dur + 0.02); }
-  o1.onended = function () {
-    try {
-      o1.disconnect(); bp.disconnect(); g.disconnect();
-      if (o2) { o2.disconnect(); m2.disconnect(); }
-      if (lfo) { lfo.disconnect(); lg.disconnect(); }
-    } catch (e) { }
-  };
-  MUS.notes += o2 ? 2 : 1;
-}
-/* the pair, in parallel thirds. The harmony voice is the thin one, which
-   keeps the whole section inside the oscillator budget. */
-function musTrumpetPair(n, t, dur, gain) {
-  musTrumpet(musHz(n), t, dur, gain, false);
-  musTrumpet(musHz(n + musThird(n)), t, dur, gain * 0.62, true);
-}
-
-/* ---- PERCUSSION: shaker on the eighths, tarola crack when it gets hot ---- */
-function musShaker(t, gain) {
-  if (!noiseBuf) return;
-  var src = AC.createBufferSource();
-  src.buffer = noiseBuf;
-  src.playbackRate.value = 1.9;
-  var bp = AC.createBiquadFilter();
-  bp.type = 'highpass'; bp.frequency.setValueAtTime(6800, t);
-  var g = AC.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.004);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.048);
-  src.connect(bp); bp.connect(g); g.connect(MUS.bus);
-  src.start(t); src.stop(t + 0.08);
-  src.onended = function () { try { src.disconnect(); bp.disconnect(); g.disconnect(); } catch (e) { } };
-  MUS.notes++;
-}
-/* tarola: a tight snare crack, noise through a bandpass with a short body */
-function musSnare(t, gain) {
-  if (!noiseBuf) return;
-  var src = AC.createBufferSource();
-  src.buffer = noiseBuf;
-  src.playbackRate.value = 1.35;
-  var bp = AC.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.setValueAtTime(1900, t); bp.Q.value = 0.8;
-  var g = AC.createGain();
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t + 0.004);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
-  src.connect(bp); bp.connect(g); g.connect(MUS.bus);
-  src.start(t); src.stop(t + 0.18);
-  src.onended = function () { try { src.disconnect(); bp.disconnect(); g.disconnect(); } catch (e) { } };
-  MUS.notes++;
-}
-/* tambora: the soft low drum on the down-beat. Filtered noise rather than an
-   oscillator, which keeps one more voice free for the band. */
-function musTambora(t) {
-  if (!noiseBuf) return;
-  var src = AC.createBufferSource();
-  src.buffer = noiseBuf;
-  src.playbackRate.value = 0.28;
+/* ---- CLARINET ------------------------------------------------------------
+   A square wave is all odd harmonics, which is exactly a clarinet's spectrum;
+   a warm lowpass takes the buzz off it. One oscillator, so the harmony voice
+   costs almost nothing. */
+function musClarinet(n, t, dur, gain) {
+  var f = musHz(n);
+  var o = AC.createOscillator(); o.type = 'square';
+  o.frequency.setValueAtTime(f, t);
   var lp = AC.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.setValueAtTime(190, t); lp.Q.value = 3.0;
+  lp.type = 'lowpass'; lp.Q.value = 0.8;
+  lp.frequency.setValueAtTime(Math.min(2400, f * 3.2), t);
+  var g = AC.createGain();
+  var pk = Math.max(0.0002, gain);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(pk, t + 0.020);
+  g.gain.setValueAtTime(pk, t + Math.max(0.03, dur - 0.05));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(lp); lp.connect(g); g.connect(MUS.gLead);
+  o.start(t); o.stop(t + dur + 0.03);
+  o.onended = function () { try { o.disconnect(); lp.disconnect(); g.disconnect(); } catch (e) { } };
+  MUS.notes++;
+  musLog('clarinet', n, t, dur, gain);
+}
+/* the pair, in parallel diatonic thirds, with an optional grace note in front
+   of the trumpet - the ornament that makes a run sound played */
+function musLead(n, t, dur, gain, vel, grace) {
+  var tt = t, dd = dur;
+  if (grace && dur > 0.14) {
+    musTrumpetV(n - 2, tt, 0.05, gain * 0.72, 0.55);
+    tt += 0.05; dd -= 0.05;
+  }
+  musTrumpetV(n, tt, dd, gain, vel);
+  musClarinet(n + musThird(n), tt, dd, gain * 0.52);
+}
+
+/* ---- THE GRITO -----------------------------------------------------------
+   The same pitch-sliding formant-ish saw the coin streak uses, but scheduled
+   against the music clock and routed through the music bus, so the huapango
+   can throw one every sixteen bars. */
+function musGrito(t) {
+  var o = AC.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(430, t);
+  o.frequency.exponentialRampToValueAtTime(880, t + 0.18);
+  o.frequency.exponentialRampToValueAtTime(300, t + 0.75);
+  var bp = AC.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.setValueAtTime(1100, t); bp.Q.value = 3.2;
+  var lfo = AC.createOscillator(); lfo.type = 'sine';
+  lfo.frequency.setValueAtTime(7.5, t);
+  var lg = AC.createGain(); lg.gain.setValueAtTime(26, t);
+  lfo.connect(lg); lg.connect(o.frequency);
   var g = AC.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.55, t + 0.006);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-  src.connect(lp); lp.connect(g); g.connect(MUS.bus);
-  src.start(t); src.stop(t + 0.20);
-  src.onended = function () { try { src.disconnect(); lp.disconnect(); g.disconnect(); } catch (e) { } };
-  MUS.notes++;
+  g.gain.exponentialRampToValueAtTime(0.30, t + 0.06);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.80);
+  o.connect(bp); bp.connect(g); g.connect(MUS.gLead);
+  o.start(t); lfo.start(t); o.stop(t + 0.85); lfo.stop(t + 0.85);
+  o.onended = function () {
+    try { o.disconnect(); bp.disconnect(); g.disconnect(); lfo.disconnect(); lg.disconnect(); } catch (e) { }
+  };
+  MUS.notes += 2;
+  musLog('grito', 0, t, 0.85, 0.30);
+}
+
+/* ---- THE CUSTOMS DRONE ---------------------------------------------------
+   Two saws a few cents apart under a slow tuba pedal, through a tight lowpass.
+   No drums, no band: the joke needs air. */
+function musDrone(t, dur) {
+  var o1 = AC.createOscillator(); o1.type = 'sawtooth';
+  o1.frequency.setValueAtTime(55, t);
+  o1.frequency.linearRampToValueAtTime(49, t + dur);
+  var o2 = AC.createOscillator(); o2.type = 'sawtooth';
+  o2.frequency.setValueAtTime(55.4, t);
+  o2.frequency.linearRampToValueAtTime(49.3, t + dur);
+  var lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(230, t); lp.Q.value = 4.0;
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.24, t + dur * 0.30);
+  g.gain.setValueAtTime(0.24, t + dur * 0.70);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(MUS.gBass);
+  o1.start(t); o2.start(t);
+  o1.stop(t + dur + 0.05); o2.stop(t + dur + 0.05);
+  o1.onended = function () {
+    try { o1.disconnect(); o2.disconnect(); lp.disconnect(); g.disconnect(); } catch (e) { }
+  };
+  MUS.notes += 2;
+  musLog('drone', 33, t, dur, 0.24);
 }
 
 /* ---------------------------------------------------------------------------
    ONE SLOT OF THE FORM
-   Polka (8 slots to a 2/4 bar):
-     0  bass ROOT + tambora + shaker
-     2  bajo sexto chop ("and" of 1) + shaker
-     4  bass FIFTH + shaker
-     6  chop ("and" of 2) + shaker, or the chromatic walk-up
-   Huapango (6 slots to a 6/8 bar):
-     even bars 3+3 -> accents on 0 and 3
-     odd  bars 2+2+2 -> accents on 0, 2 and 4
+   2/4, eight 16th slots:
+     0  tuba ROOT   + tambora (+ crash on bars 0/4/8/12) + shaker
+     2  tarola off-beat crack + shaker  (+ brass stab)
+     4  tuba FIFTH  + tambora + shaker  (or the first note of a walk-up run)
+     6  tarola off-beat crack + shaker  (+ brass stab)  (or a 16th roll)
+   Huapango 6/8, six triplet-eighth slots in the same two beats:
+     even bars accent 3+3 -> slots 0 and 3
+     odd  bars accent 2+2+2 -> slots 0, 2 and 4
    --------------------------------------------------------------------------- */
 function musSchedule(bar, slot, t, grid) {
   var F = MUS_FORM[bar];
   var CH = MUS_CHORDS[F.c];
   var nextCh = MUS_CHORDS[MUS_FORM[(bar + 1) & 15].c];
   var sd = grid.sdur;
-  var full = (MUS.mode !== 'title');
-  var hot = (MUS.mode === 'intense');
+  var mode = MUS.mode;
 
-  if (!hot) {
-    /* ---------------- NORTEÑO POLKA, 2/4 ---------------- */
-    if (slot === 0) { musBass(CH.root, t, sd * 1.75); if (full) musTambora(t); }
-    else if (slot === 4) musBass(CH.fifth, t, sd * 1.75);
-    if (slot === 2 || slot === 6) musChop(CH.triad, t, sd * 0.80, full ? 0.085 : 0.10);
-    if (full && (slot % 2 === 0)) musShaker(t, slot === 0 ? 0.050 : 0.034);
-    /* the chromatic walk-up into the dominant: root - #root - next root */
-    if (F.walk && slot === 6) musBass(nextCh.root - 1, t, sd * 1.4);
-  } else {
-    /* ---------------- HUAPANGO 6/8, HEMIOLA ---------------- */
-    var three = (bar % 2 === 0);                       // 3+3 this bar, 2+2+2 next
-    var accent = three ? (slot === 0 || slot === 3)
-                       : (slot === 0 || slot === 2 || slot === 4);
-    if (accent) {
-      musBass(slot === 0 ? CH.root : CH.fifth, t, sd * 1.15);
-      if (slot === 0) musTambora(t);
-    } else {
-      musChop(CH.triad, t, sd * 0.62, 0.075);
+  /* -------- CUSTOMS: a drone and nothing else -------- */
+  if (mode === 'customs') {
+    if (slot === 0 && (bar & 1) === 0) {
+      musDrone(t, sd * 3.6);
+      musTuba(43, t, sd * 1.9, 0.26);          // the slow tuba pedal, on G
     }
-    musShaker(t, accent ? 0.052 : 0.030);
-    // the tarola crack on the "and" of two
-    if (slot === (three ? 4 : 3)) musSnare(t, 0.11);
-    if (F.walk && slot === 5) musBass(nextCh.root - 1, t, sd * 0.9);
+    return;
   }
 
-  if (!full) return;                 // title screen: bass + bajo sexto only
+  var title = (mode === 'title');
+  var hot = (mode === 'intense');
 
-  /* ---------------- THE LEAD: call and response ---------------- */
-  if (!hot) {
-    var lst = MUS_LEAD[bar];
-    var acc = musIsAccordionBar(bar);
-    for (var i = 0; i < lst.length; i++) {
-      if (lst[i][0] !== slot) continue;
-      var n = lst[i][1];
-      var L = lst[i][2] * sd * 0.94;
-      if (acc) musAccordion(n, t, L, 0.115);
-      else musTrumpetPair(n, t, L, 0.115);
+  /* -------- TITLE: one brass fanfare, then a lighter groove -------- */
+  if (title && bar === 0 && !MUS.introDone) {
+    if (slot === 0) {
+      // a rising run into a held chord in thirds
+      var runN = [67, 69, 71, 74, 76];
+      for (var fi = 0; fi < runN.length; fi++) {
+        musBrass([runN[fi]], t + fi * sd, sd * 0.95, 0.26, false);
+      }
+      musBrass([79, 83, 86], t + 5 * sd, sd * 5.0, 0.24, true);
+      musTuba(43, t, sd * 2.2, 0.34);
+      musTuba(50, t + 4 * sd, sd * 2.2, 0.32);
+      musTambora(t, 0.90, true);
+      musTambora(t + 4 * sd, 0.80, false);
     }
-  } else {
-    /* In the huapango the two sections trade on the accents themselves: the
-       trumpets punch the 3+3 bars, the accordion runs the 2+2+2 bars. */
-    var sc = CH.scale;
-    if (bar % 2 === 0) {
-      if (slot === 0) musTrumpetPair(CH.triad[0] + 12, t, sd * 2.4, 0.115);
-      else if (slot === 3) musTrumpetPair(CH.triad[2] + 12, t, sd * 2.4, 0.105);
+    if (slot === grid.spb - 1) MUS.introDone = true;
+    return;
+  }
+
+  if (!hot) {
+    /* ================= 2/4 BANDA ================= */
+    var runNotes = (F.run && !title) ? musTubaRun(CH, nextCh.root) : null;
+    if (slot === 0) {
+      musTuba(CH.root, t, sd * 1.7, title ? 0.30 : 0.40);
+      musTambora(t, title ? 0.62 : 0.98, (bar & 3) === 0);
+    } else if (slot === 4) {
+      if (runNotes) {
+        // the four-eighth walk-up occupies the whole of beat 2
+        // staccato, so two notes of a run never sound at once
+        for (var ri = 0; ri < 4; ri++) musTuba(runNotes[ri], t + ri * sd, sd * 0.65, 0.36);
+      } else {
+        // an occasional octave leap instead of the plain fifth
+        var fifth = ((bar & 3) === 2 && !title) ? CH.root + 12 : CH.fifth;
+        musTuba(fifth, t, sd * 1.7, title ? 0.28 : 0.38);
+      }
+      musTambora(t, title ? 0.56 : 0.90, false);
+    }
+    if (!title) {
+      if (slot === 2) musTarola(t, 0.34);
+      if (slot === 6 && !F.fill) musTarola(t, 0.37);
+      if (F.fill && slot === 4) musRoll(t, sd, 4, 0.34);      // the 16th roll
+    }
+    if (slot % 2 === 0) musShaker(t, slot === 0 ? 0.085 : 0.055);
+
+    if (title) return;                    // title groove: rhythm section only
+
+    /* ---- the section that owns this bar ---- */
+    if (F.lead === 'M') {
+      var lst = MUS_LEAD[bar];
+      for (var i = 0; i < lst.length; i++) {
+        if (lst[i][0] !== slot) continue;
+        var L = lst[i][2] * sd * 0.94;
+        musLead(lst[i][1], t, L, 0.15, clamp(lst[i][2] / 3, 0.35, 1), lst[i][3]);
+      }
+      /* the melody bars still get one brass answer, on the "and" of two -
+         two voices only, and never on a bar where the tuba is already running,
+         so the section never stacks on top of a run AND a lead phrase */
+      if (slot === 6 && !F.run) musBrass(CH.triad, t, sd * 1.1, 0.15, false, true);
     } else {
-      if (slot === 0 || slot === 2 || slot === 4) {
-        var k = (slot >> 1);
-        musAccordion(sc[(k * 2 + bar) % 7] + 12, t, sd * 0.8, 0.105);
-        musAccordion(sc[(k * 2 + bar + 2) % 7] + 12, t + sd * 0.5, sd * 0.5, 0.085);
+      // brass response: stabs on every eighth, the phrase-end one fattened
+      for (var sI = 0; sI < MUS_STAB.length; sI++) {
+        if (MUS_STAB[sI] !== slot) continue;
+        var big = (F.hit && slot === 0);
+        musBrass(CH.triad, t, big ? sd * 3.0 : sd * 1.15,
+                 big ? 0.22 : (slot % 4 === 0 ? 0.17 : 0.15), big);
+        if (big) musTambora(t, 0.56, true);
       }
     }
+    /* THE TRIPLET PICKUP into the next phrase - three notes in the space of
+       two 16ths, which is what makes them read as triplets against the 2/4.
+       It belongs to the FORM, so it fires whichever section owns the bar. */
+    var tp = MUS_TRIP[bar];
+    if (tp && slot === tp[0]) {
+      var tsd = sd * 2 / 3;
+      for (var k = 0; k < 3; k++) musTrumpetV(tp[k + 1], t + k * tsd, tsd * 0.86, 0.12, 0.8);
+    }
+  } else {
+    /* ================= INTENSE ================= */
+    if (grid.six) {
+      /* ---- huapango 6/8 hemiola: 3+3 on even bars, 2+2+2 on odd ---- */
+      var three = (bar % 2 === 0);
+      var accent = three ? (slot === 0 || slot === 3)
+                         : (slot === 0 || slot === 2 || slot === 4);
+      if (accent) {
+        musTuba(slot === 0 ? CH.root : CH.fifth, t, sd * 1.5, 0.40);
+        musTambora(t, slot === 0 ? 1.02 : 0.86, slot === 0 && (bar & 3) === 0);
+      } else {
+        musTarola(t, 0.30);
+      }
+      musShaker(t, accent ? 0.085 : 0.050);
+      // doubled tarola: a crack on the "and" of every accent group
+      if (slot === (three ? 4 : 3)) musTarola(t, 0.38);
+      if (slot === 5) musTarola(t + sd * 0.5, 0.26);
+      // the trumpets punch the 3+3 bars, the melody runs the 2+2+2 bars
+      if (three) {
+        if (slot === 0) musBrass(CH.triad, t, sd * 2.6, 0.19, true);
+        else if (slot === 3) musBrass(CH.triad, t, sd * 2.4, 0.17, false);
+      } else if (slot === 0 || slot === 2 || slot === 4) {
+        var sc6 = CH.triad;
+        musLead(sc6[(slot >> 1) % sc6.length] + 12, t, sd * 1.5, 0.14, 0.9, false);
+      }
+      // the high trumpet countermelody, over the top of the hemiola
+      /* the high trumpet countermelody - but not while the grito is still
+         ringing (it is thrown on the downbeat of bar 0 and rings through
+         bar 1): the shout IS the countermelody for those two bars, and
+         doubling them is the one place the voice count would go over ten */
+      if (slot === 1 && bar > 1) musTrumpetV(CH.triad[2] + 12, t, sd * 1.6, 0.085, 1);
+    } else {
+      /* ---- four bars back in straight 2/4, flat out ---- */
+      if (slot === 0) {
+        musTuba(CH.root, t, sd * 1.6, 0.42);
+        musTambora(t, 1.02, (bar & 3) === 0);
+      } else if (slot === 4) {
+        musTuba(CH.fifth, t, sd * 1.6, 0.40);
+        musTambora(t, 0.92, false);
+      }
+      if (slot === 2 || slot === 6) musTarola(t, 0.36);
+      if (slot === 1 || slot === 3 || slot === 5 || slot === 7) musTarola(t, 0.16);
+      if (slot % 2 === 0) musShaker(t, slot === 0 ? 0.085 : 0.058);
+      if (slot === 0 || slot === 4) musBrass(CH.triad, t, sd * 1.4, 0.18, slot === 0);
+      if (slot === 2 || slot === 6) musTrumpetV(CH.triad[2] + 12, t, sd * 1.1, 0.10, 1);
+      if (F.fill && slot === 6) musRoll(t, sd * 0.5, 4, 0.36);
+    }
+    // a grito every sixteen bars, on the downbeat of the form
+    if (bar === 0 && slot === 0) musGrito(t + grid.sdur * 1.5);
   }
+}
+
+/* ---------------------------------------------------------------------------
+   THE CURSOR
+   The ONE place bar / slot advance. The live 100 ms scheduler and the offline
+   renderer both call it, so what an OfflineAudioContext renders is literally
+   the music the game plays.
+   --------------------------------------------------------------------------- */
+function musStepOnce(t) {
+  var grid = musGrid(MUS.bar);
+  musSchedule(MUS.bar, MUS.slot, t, grid);
+  MUS.slot++;
+  if (MUS.slot >= grid.spb) { MUS.slot = 0; MUS.bar = (MUS.bar + 1) & 15; }
+  MUS.step = MUS.bar * 16 + MUS.slot;
+  return grid.sdur;
 }
 
 function musTick() {
@@ -8125,18 +8545,14 @@ function musTick() {
     var guard = 0;
     while (MUS.nextT < AC.currentTime + MUS_LOOK && guard++ < 64) {
       /* a mode change only ever lands on a BAR LINE, so switching between the
-         polka and the huapango never chops a phrase in half */
+         2/4 and the huapango never chops a phrase in half */
       if (MUS.slot === 0 && MUS.pending) {
         MUS.mode = MUS.pending; MUS.pending = null;
+        if (MUS.mode !== 'title') MUS.introDone = false;
         if (MUS.bus) { try { MUS.bus.gain.setTargetAtTime(musLevel(), AC.currentTime, 0.10); } catch (e2) { } }
       }
       if (MUS.mode === 'off') { MUS.nextT = AC.currentTime + 0.05; return; }
-      var grid = musGrid();
-      musSchedule(MUS.bar, MUS.slot, MUS.nextT, grid);
-      MUS.nextT += grid.sdur;
-      MUS.slot++;
-      if (MUS.slot >= grid.spb) { MUS.slot = 0; MUS.bar = (MUS.bar + 1) & 15; }
-      MUS.step = MUS.bar * 16 + MUS.slot;
+      MUS.nextT += musStepOnce(MUS.nextT);
     }
   } catch (e) {
     MUS.err++;
@@ -8152,6 +8568,7 @@ function musSetMode(m) {
     // silence and the first note after silence are immediate
     MUS.mode = m; MUS.pending = null;
     if (m !== 'off') { MUS.bar = 0; MUS.slot = 0; }
+    if (m !== 'title') MUS.introDone = false;
   } else {
     MUS.pending = m;                 // otherwise wait for the next bar line
   }
@@ -8175,13 +8592,133 @@ function musWantMode() {
   if (!MUS.on) return 'off';
   if (GAME.state === 'TITLE') return 'title';
   if (GAME.state === 'PAUSED') return 'title';
-  if (GAME.state === 'FINISHED') return GAME.finPhase >= 1 ? 'off' : 'run';
+  /* the checkpoint gag gets its own cue: the band cuts out the moment the
+     gates come down and an ominous drone takes over, then silence for the
+     results card */
+  if (GAME.state === 'FINISHED') {
+    if (GAME.finPhase <= 0) return 'run';
+    return GAME.finPhase >= 4 ? 'off' : 'customs';
+  }
   if (GAME.state === 'PLAYING') {
     if (GAME.airborne || GAME.boostTime > 0 || GAME.zone === 'turbo') return 'intense';
     return 'run';
   }
   return 'off';
 }
+
+/* ---------------------------------------------------------------------------
+   OFFLINE RENDER  (test hook, never used in play)
+   Stands up an identical bus tree on an OfflineAudioContext, points the module
+   globals at it, and drives musStepOnce() - the same scheduler - for `bars`
+   bars. The rendered samples are stashed on window.__RR_MUSIC so a harness can
+   analyse them, and a compact summary comes back through the promise.
+   `solo` ('drum' | 'bass' | 'brass' | 'lead') mutes the other sub-buses, which
+   is how the relative-level claims in the mix are checked.
+   --------------------------------------------------------------------------- */
+function musSpanSeconds(mode, bars) {
+  var save = MUS.mode;
+  MUS.mode = mode;
+  var t = 0;
+  for (var b = 0; b < bars; b++) {
+    var g = musGrid(b & 15);
+    t += g.spb * g.sdur;
+  }
+  MUS.mode = save;
+  return t;
+}
+function renderMusicOffline(opts) {
+  opts = opts || {};
+  var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OAC) return Promise.reject(new Error('no OfflineAudioContext'));
+  var mode = opts.mode || 'run';
+  var bars = opts.bars || 8;
+  var sr = opts.sampleRate || 44100;
+  var seconds = musSpanSeconds(mode, bars) + 1.2;      // + a tail for the release
+  var save = {
+    AC: AC, masterGain: masterGain, noiseBuf: noiseBuf, audioReady: audioReady,
+    duck: MUS.duck, bus: MUS.bus, gDrum: MUS.gDrum, gBass: MUS.gBass,
+    gBrass: MUS.gBrass, gLead: MUS.gLead,
+    on: MUS.on, mode: MUS.mode, pending: MUS.pending, bar: MUS.bar, slot: MUS.slot,
+    notes: MUS.notes, log: MUS.log, logOn: MUS.logOn, introDone: MUS.introDone
+  };
+  function restore() {
+    AC = save.AC; masterGain = save.masterGain; noiseBuf = save.noiseBuf;
+    audioReady = save.audioReady;
+    MUS.duck = save.duck; MUS.bus = save.bus; MUS.gDrum = save.gDrum;
+    MUS.gBass = save.gBass; MUS.gBrass = save.gBrass; MUS.gLead = save.gLead;
+    MUS.on = save.on; MUS.mode = save.mode; MUS.pending = save.pending;
+    MUS.bar = save.bar; MUS.slot = save.slot; MUS.notes = save.notes;
+    MUS.log = save.log; MUS.logOn = save.logOn; MUS.introDone = save.introDone;
+  }
+  var ctx, tEnd = 0, notes = 0;
+  try {
+    ctx = new OAC(1, Math.ceil(sr * seconds), sr);
+    AC = ctx;
+    masterGain = ctx.createGain();
+    masterGain.gain.value = MASTER_LEVEL;
+    var lim = musMakeLimiter(ctx);
+    masterGain.connect(lim); lim.connect(ctx.destination);
+    // a DETERMINISTIC noise buffer, so two renders of the same bars match
+    var len = Math.floor(sr * 1.2);
+    noiseBuf = ctx.createBuffer(1, len, sr);
+    var ch = noiseBuf.getChannelData(0);
+    var seed = 12345 >>> 0;
+    for (var i = 0; i < len; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      ch[i] = (seed / 2147483648) - 1;
+    }
+    audioReady = true;
+    var nodes = musBuildBuses(ctx, masterGain);
+    musAttachBuses(nodes);
+    if (opts.solo) {
+      var soloMap = { drum: nodes.gDrum, bass: nodes.bassOut, brass: nodes.gBrass, lead: nodes.gLead };
+      for (var kk in soloMap) {
+        if (!Object.prototype.hasOwnProperty.call(soloMap, kk)) continue;
+        soloMap[kk].gain.value = (kk === opts.solo) ? MUS_MIX[kk] : 0;
+      }
+    }
+    MUS.on = true; MUS.mode = mode; MUS.pending = null;
+    MUS.bar = 0; MUS.slot = 0; MUS.notes = 0;
+    MUS.introDone = !opts.intro;
+    MUS.log = []; MUS.logOn = true;
+    nodes.bus.gain.value = musLevel();
+    var t = 0.05;
+    var slots = 0, guard = 0;
+    for (var b = 0; b < bars; b++) {
+      var g = musGrid(MUS.bar);
+      for (var sI = 0; sI < g.spb && guard++ < 4000; sI++) {
+        t += musStepOnce(t);
+        slots++;
+      }
+    }
+    tEnd = t;
+    notes = MUS.notes;
+  } catch (e) {
+    restore();
+    return Promise.reject(e);
+  }
+  var log = MUS.log;
+  var bpm = musBpm();
+  var beat = 60 / bpm;
+  restore();
+  return ctx.startRendering().then(function (buf) {
+    var data = buf.getChannelData(0);
+    var peak = 0, sum = 0, dc = 0, n = data.length;
+    for (var i = 0; i < n; i++) {
+      var v = data[i];
+      if (v > peak) peak = v; else if (-v > peak) peak = -v;
+      sum += v * v; dc += v;
+    }
+    window.__RR_MUSIC = { sampleRate: buf.sampleRate, data: data, log: log,
+                          mode: mode, bars: bars, bpm: bpm, beat: beat, tEnd: tEnd };
+    return { ok: true, mode: mode, bars: bars, bpm: bpm, beat: +beat.toFixed(4),
+             sampleRate: buf.sampleRate, seconds: +(n / buf.sampleRate).toFixed(3),
+             scheduledSeconds: +tEnd.toFixed(3), notes: notes, logged: log.length,
+             peak: +peak.toFixed(4), rms: +Math.sqrt(sum / n).toFixed(5),
+             dc: +(dc / n).toFixed(6) };
+  }, function (e) { throw e; });
+}
+
 function updateMusicUI() {
   var ico = MUS.on ? '🔈' : '🔇';
   var els = ['musIco', 'musIco2'];
@@ -8661,7 +9198,8 @@ function resetRun(newSeed) {
   clearParticles();
   clearRings();
   clearPopNumbers();
-  clearCoinFly();                 // no half-flown pickup icons survive a restart
+  clearCoinFly();                 // the counter bump class never survives a restart
+  resetVanGold();                 // and neither does a half-played gold flash
   generateCourse(newSeed);
   resetMoments();                 // every scripted set-piece back to un-fired
   resetCustoms();
@@ -8775,8 +9313,11 @@ function arriveUSA() {
   updateTouchUI();
 }
 
+/* the time bonus is measured against a PAR that scales with the course, so
+   stretching the run does not silently deflate every score */
+var TIME_PAR = Math.round(170 * COURSE_SCALE);       // 247 s
 function computeScore() {
-  var base = Math.max(0, Math.round((170 - GAME.finishTime) * 120));
+  var base = Math.max(0, Math.round((TIME_PAR - GAME.finishTime) * 120));
   // coinPts already carries the streak multiplier, so a clean run of trails
   // is worth far more than the same coins picked up in dribs and drabs
   return Math.max(0, base + GAME.coinPts + GAME.boosts * 160 + GAME.dodged * 30 +
@@ -8933,10 +9474,9 @@ function updateHUD(force) {
   }
   if (force || GAME.hits !== hudCache.h) { hudCache.h = GAME.hits; $('hitsVal').textContent = GAME.hits; }
   if (force || GAME.boosts !== hudCache.b) { hudCache.b = GAME.boosts; $('boostsVal').textContent = GAME.boosts; }
-  /* THE COIN COUNTER TICKS ON ARRIVAL. GAME.coins is the true count, used for
-     the score and the grade; GAME.coinsHud only goes up when a flying coin
-     icon actually lands in the box (see updateCoinFly), which is what makes
-     the pickup read as a delivery rather than as a number changing. */
+  /* THE COIN COUNTER TICKS IN PLACE, the instant the van absorbs the coin
+     (see collectCoin). GAME.coinsHud only still exists so a forced HUD refresh
+     and the live count can never disagree. */
   if (force) { GAME.coinsHud = GAME.coins; }
   hudCoinShown = GAME.coinsHud;
   if (force || hudCoinShown !== hudCache.c) { hudCache.c = hudCoinShown; $('coinVal').textContent = hudCoinShown; }
@@ -9553,6 +10093,7 @@ function updateVanVisual(dt) {
 
   updateDriver(dt);
   updateVanDoors(dt);
+  updateVanGold(dt);
 }
 
 /* ---------------- camera ---------------- */
@@ -9807,7 +10348,7 @@ function frame(dt, tAbs) {
     updateParticles(dt);
     updateRings(dt);
     updatePopNumbers(dt);
-    updateCoinFly(dt);
+    updateCoinHud(dt);
     updateCargoBoxes(dt);
     updatePapers(dt);
     updateWorld(dt);
@@ -9992,15 +10533,17 @@ function boot() {
                  coins: activeCoins.length, particles: partLive.length,
                  pickups: activePickups.length, warns: activeWarns.length,
                  boxes: cargoLive.length, papers: paperLive.length,
-                 rings: ringLive.length, pops: popLive.length, fly: coinFlyLive.length,
+                 rings: ringLive.length, pops: popLive.length,
                  planned: { o: obstaclePlan.length, b: boostPlan.length, c: coinPlan.length,
                             p: pickupPlan.length, w: warnPlan.length, m: momentPlan.length } };
       },
       /* the coin-pickup FX: none of these may survive a restart */
       get pickupFx() {
-        return { fly: coinFlyLive.length, pops: popLive.length, rings: ringLive.length,
+        return { pops: popLive.length, rings: ringLive.length,
                  coins: GAME.coins, coinsHud: GAME.coinsHud,
-                 flyPool: coinFlyPool.length };
+                 goldT: GOLD_FX.t,
+                 goldOpacity: VAN_GOLD_MAT ? +VAN_GOLD_MAT.opacity.toFixed(3) : null,
+                 goldVisible: !!(vanGoldShell && vanGoldShell.visible) };
       },
       /* the cargo hold behind the rear doors: a static, always-built interior */
       get interior() {
@@ -10040,6 +10583,13 @@ function boot() {
       gapAt: function (d) { return rowGapAt(+d); },
       /* the authored chunks this seed laid down, in order */
       get patterns() { return PATTERN_LOG.slice(); },
+      /* the section rhythm: every banner / zone marker, in order. Lets a test
+         assert how many ZONA TURBO and themed hazard sections a run contains. */
+      get sections() {
+        return sectionPlan.map(function (s) {
+          return { d: Math.round(s.d), zone: s.zone || '', text: s.text || '' };
+        });
+      },
       /* corridor + reaction-budget audit for the whole generated course */
       audit: function () { return courseAudit(); },
       regen: function (seed) { generateCourse(+seed >>> 0); return courseAudit(); },
@@ -10108,10 +10658,21 @@ function boot() {
       get zone() { return GAME.zone; },
       get kmh() { return Math.min(CFG.KMH_MAX, Math.max(0, Math.round(GAME.speed * CFG.KMH))); },
       get music() {
-        return { on: MUS.on, mode: MUS.mode, step: MUS.step, bpm: musBpm(),
+        return { on: MUS.on, mode: MUS.mode, pending: MUS.pending,
+                 bar: MUS.bar, slot: MUS.slot, step: MUS.step, bpm: musBpm(),
                  ctx: AC ? AC.state : 'none', timer: !!MUS.timer,
                  notes: MUS.notes, err: MUS.err, lastErr: MUS.lastErr,
-                 nextT: MUS.nextT, level: MUS.bus ? MUS.bus.gain.value : null };
+                 nextT: MUS.nextT, level: MUS.bus ? MUS.bus.gain.value : null,
+                 mix: { drum: MUS_MIX.drum, bass: MUS_MIX.bass,
+                        brass: MUS_MIX.brass, lead: MUS_MIX.lead },
+                 master: MASTER_LEVEL };
+      },
+      /* render the SAME scheduler into an OfflineAudioContext. The samples are
+         left on window.__RR_MUSIC for a harness to analyse; the promise
+         resolves with peak / rms / dc and the scheduled note count. */
+      renderMusic: function (opts) {
+        try { return renderMusicOffline(opts); }
+        catch (e) { return Promise.reject(e); }
       },
       musicTick: function (n) {
         var k = (n === undefined) ? 1 : (+n || 1);
