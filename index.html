@@ -120,6 +120,24 @@ canvas{display:block}
 #multPill.on{display:block;animation:multPop .28s cubic-bezier(.2,1.7,.4,1)}
 #multPill.x3{background:linear-gradient(180deg,#8CF7B4,var(--boost));color:#08320F;}
 @keyframes multPop{from{transform:scale(1.55) rotate(-7deg)}to{transform:scale(1)}}
+/* the coin counter BUMPS when a flying coin icon lands in it */
+#coinBox.bump{animation:coinBump .24s cubic-bezier(.2,1.8,.4,1)}
+@keyframes coinBump{
+  0%{transform:scale(var(--hs))}
+  42%{transform:scale(calc(var(--hs) * 1.20))}
+  100%{transform:scale(var(--hs))}
+}
+
+/* ---------- flying coin icons (pickup -> HUD counter) ---------- */
+#coinFly{position:fixed;inset:0;z-index:12;pointer-events:none;overflow:hidden}
+.cfly{
+  position:absolute;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;
+  border-radius:50%;
+  background:radial-gradient(circle at 36% 32%,#FFE277 0%,#FFC300 46%,#E09A00 78%,#B37E00 100%);
+  border:3px solid var(--ink);
+  box-shadow:0 0 11px rgba(255,200,60,.8), 0 2px 0 rgba(0,0,0,.35);
+  will-change:transform;
+}
 
 /* verde-blanco-rojo trim on the HUD frames */
 .mxbar{position:absolute;left:-4px;right:-4px;bottom:-4px;height:4px;border-radius:0 0 10px 10px;
@@ -225,8 +243,8 @@ canvas{display:block}
   gap:9px;width:min(88vw,760px);   /* px, not vh: iOS Safari lies about vh */
 }
 .note{
-  opacity:0;transform:translateY(-10px) scale(.82);
-  transition:opacity .16s ease-out, transform .26s cubic-bezier(.2,1.6,.4,1);
+  opacity:0;transform:translateY(-12px) scale(.66);
+  transition:opacity .12s ease-out, transform .34s cubic-bezier(.18,1.95,.32,1);
   max-width:100%;text-align:center;color:#fff;letter-spacing:1px;line-height:1.08;
   /* wrap rather than clip: "¡LA RAMPA! ¡AGÁRRATE!" is wider than a phone */
   white-space:normal;overflow:visible;
@@ -479,6 +497,7 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
 </div>
 
 <div id="noteCol"></div>
+<div id="coinFly"></div>
 
 <!-- ============ TOUCH CONTROLS ============ -->
 <div id="touch">
@@ -615,29 +634,32 @@ var CFG = {
   PLAZA_LEN:     560,
 
   /* --- speeds (world units / second) ------------------------------------
-     Retuned for a slower, more readable game. The whole ladder came down by
-     roughly a quarter: cruise 46 -> 36, ceiling 98 -> 74, boost ceiling
-     138 -> 100. KMH was re-scaled with it so the dial still reads fast
-     (cruise ~90 km/h, flat-out on a boost ~250 km/h) - the NUMBER is the
-     fantasy, the world units are what the player has to react to.        */
-  V_CRUISE:      36,
+     GAME-FEEL PASS. The previous tuning traded away all the urgency for
+     readability, and the middle of the run went flat. The ladder is back up:
+     cruise 36 -> 44, ceiling 74 -> 86, boost ceiling 100 -> 118, and the cap
+     ramp now reaches V_MAX at 60% of the course instead of 70%, so the second
+     half is flat-out rather than still climbing. Readability is preserved by
+     DERIVING row spacing from the cap (rowGapAt) rather than hard-coding it,
+     so every decision point still buys >= MIN_REACT seconds.
+     KMH is unchanged, so the dial reads 110 km/h at cruise and 295 flat out. */
+  V_CRUISE:      44,
   V_MIN:         14,
-  V_MAX:         74,
-  V_BOOST_MAX:  100,
-  ACCEL:          8,
-  ACCEL_COAST:    4.4,
+  V_MAX:         86,
+  V_BOOST_MAX:  118,
+  ACCEL:         11,
+  ACCEL_COAST:    6.0,
   BRAKE:         30,
   DRAG:           4.0,
-  BOOST_KICK:    30,
+  BOOST_KICK:    40,
   BOOST_TIME:    2.1,
   HIT_LOSS:      0.42,   // speed multiplier on impact
   INVULN:        1.15,
-  KMH:           2.50,   // display conversion: 36 -> 90 km/h, 100 -> 250 km/h
-  /* the effective ceiling RAMPS with progress: the first third of the bridge
-     runs at cruise so a new player can read the road, and only the last third
-     is flat-out. RAMP_END is the fraction of the course where V_MAX is
-     reached. Boost pads may still push past the cap, briefly. */
-  RAMP_END:      0.70,
+  KMH:           2.50,   // display conversion: 44 -> 110 km/h, 118 -> 295 km/h
+  /* the effective ceiling RAMPS with progress: the opening runs near cruise so
+     a new player can read the road, and V_MAX is reached by RAMP_END of the
+     course - i.e. the last 40% is flat-out. Boost pads may still push past the
+     cap, briefly. */
+  RAMP_END:      0.60,
 
   LANE_TIME:     0.25,   // seconds for a lane change
   LANE_TIME_AIR: 0.44,   // slower, floatier steering while off the deck
@@ -770,7 +792,7 @@ var GAP_LOOKAHEAD = 380;                   // size a chunk's spacing for its END
                                            // reaction budget inside the chunk
 /* the spacing has to absorb the +/-1 unit of per-obstacle jitter as well as
    the ramp, or a jittered row can land inside the reaction budget */
-var GAP_SAFETY = 1.08;
+var GAP_SAFETY = 1.12;
 function rowGapAt(d) { return Math.max(52, speedCapAt(d + GAP_LOOKAHEAD) * MIN_REACT * GAP_SAFETY); }
 
 /* ================================================================
@@ -2918,19 +2940,41 @@ function papelMats() {
   return PAPEL_TEX;
 }
 
-/* one strand: a sagging cord across the road, with n pennants hanging off it */
+/* ---------------------------------------------------------------------------
+   ONE STRAND
+   A cord strung between two fixed points, sagging in a catenary-ish parabola,
+   with the pennants hanging BELOW the cord at their own local dip. The cord is
+   built from short rotated segments so the droop is real geometry: the old
+   version drew one straight bar and only sagged the flags, which is where the
+   "hanging from nothing" read came from. Both ends of a strand always land
+   inside a physical anchor - a painted pole, or the leg of the Acuña gate.
+   --------------------------------------------------------------------------- */
+function papelSag(t, sag) { return sag * 4 * t * (1 - t); }
 function papelStrand(width, n, yTop, sag, seedOff) {
   var g = new THREE.Group();
   var mats = papelMats();
-  var cord = box(width, 0.07, 0.07, toon(0x3a3f4a), 0, yTop, 0);
-  cord.userData.noOutline = true;
-  g.add(cord);
-  for (var i = 0; i < n; i++) {
-    var t = (i + 0.5) / n;
+  var cordM = toon(0x3a3f4a);
+  var SEG = 7;                                // enough to read as a real droop
+  var prevX = -width * 0.5, prevY = yTop - papelSag(0, sag);
+  for (var s = 1; s <= SEG; s++) {
+    var t = s / SEG;
     var x = -width * 0.5 + t * width;
-    var dip = Math.sin(Math.PI * t) * sag;
+    var y = yTop - papelSag(t, sag);
+    var dx = x - prevX, dy = y - prevY;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    var seg = box(len + 0.02, 0.075, 0.075, cordM, (prevX + x) * 0.5, (prevY + y) * 0.5, 0);
+    seg.rotation.z = Math.atan2(dy, dx);
+    seg.userData.noOutline = true;
+    g.add(seg);
+    prevX = x; prevY = y;
+  }
+  for (var i = 0; i < n; i++) {
+    var ft = (i + 0.5) / n;
+    var fx = -width * 0.5 + ft * width;
+    var fy = yTop - papelSag(ft, sag);
     var f = new THREE.Mesh(new THREE.PlaneGeometry(0.80, 1.00), mats[(i + seedOff) % mats.length]);
-    f.position.set(x, yTop - dip - 0.54, 0);
+    // the flag hangs off the cord AT the cord's own height, never in mid-air
+    f.position.set(fx, fy - 0.52, 0);
     f.userData.banner = true;
     f.userData.wave = i * 0.8 + seedOff;
     f.userData.noOutline = true;
@@ -2940,17 +2984,55 @@ function papelStrand(width, n, yTop, sag, seedOff) {
   return g;
 }
 
-/* strung over the Mexican half of the bridge */
+/* a painted pole standing on one of the pedestrian walkways: the physical
+   anchor a papel picado strand is tied to. Green / white / red bands. */
+var PAPEL_POLE_COLS = [0x0e7a3c, 0xf2ede1, 0xd42a2a];
+function papelPole(x, yBase, h) {
+  var g = new THREE.Group();
+  // one outlined shaft, then two flat painted bands on top of it: three meshes
+  // instead of six, because thirteen stations of these line the Mexican half
+  var shaft = box(0.26, h, 0.26, toon(PAPEL_POLE_COLS[1]), 0, yBase + h * 0.5, 0);
+  addOutline(shaft, 0.055);
+  g.add(shaft);
+  var bandG = box(0.28, h * 0.30, 0.28, toon(PAPEL_POLE_COLS[0]), 0, yBase + h * 0.19, 0);
+  bandG.userData.noOutline = true; g.add(bandG);
+  var bandR = box(0.28, h * 0.30, 0.28, toon(PAPEL_POLE_COLS[2]), 0, yBase + h * 0.66, 0);
+  bandR.userData.noOutline = true; g.add(bandR);
+  var knob = new THREE.Mesh(new THREE.SphereGeometry(0.20, 7, 5), toon(0xffc300));
+  knob.position.set(0, yBase + h + 0.12, 0);
+  addOutline(knob, 0.05);
+  g.add(knob);
+  // the little cleat the cord is tied off to
+  var cleat = box(0.42, 0.12, 0.12, toon(0x3a3f4a), 0, yBase + h - 0.08, 0);
+  cleat.userData.noOutline = true;
+  g.add(cleat);
+  var base = box(0.46, 0.24, 0.46, toon(COL.concreteD), 0, yBase + 0.12, 0);
+  addOutline(base, 0.05);
+  g.add(base);
+  g.position.x = x;
+  return g;
+}
+
+/* strung over the Mexican half of the bridge, POLE TO POLE across the road.
+   The two poles stand on the pedestrian walkways, one each side, so every
+   string is visibly tied down at both ends. */
+var PAPEL_POLE_X = 12.6;                     // on the walkway, inboard of the rail
+var PAPEL_POLE_Y = 0.55;                     // walkway surface
 function buildPapelPicado() {
   var g = new THREE.Group();
-  var W = CFG.DECK_W - 1.0;
-  var n = IS_MOBILE ? 7 : 10;
-  var step = IS_MOBILE ? 52 : 38;
+  var n = IS_MOBILE ? 7 : 9;
+  var step = IS_MOBILE ? 66 : 52;
   var i = 0;
-  for (var d = 26; d < 640; d += step) {
+  for (var d = 30; d < 640; d += step) {
     if (jumpAt(d)) continue;
-    // strung high, clear of the windscreen: decoration, never an obstruction
-    var strand = papelStrand(W, n, 9.1 + (i % 2) * 0.6, 0.8, i);
+    var h = 8.3 + (i % 2) * 0.55;
+    for (var s = -1; s <= 1; s += 2) {
+      var p = papelPole(s * PAPEL_POLE_X, PAPEL_POLE_Y, h);
+      p.position.z = -d;
+      g.add(p);
+    }
+    // the cord ends INSIDE both poles (0.16 of overlap each side)
+    var strand = papelStrand(PAPEL_POLE_X * 2 + 0.12, n, PAPEL_POLE_Y + h - 0.08, 1.55, i);
     strand.position.z = -d;
     g.add(strand);
     BANNERS.push(strand);
@@ -2990,22 +3072,28 @@ function buildStartGate() {
   frame.userData.noOutline = true;
   g.add(frame);
 
-  // hanging banners
+  /* hanging banners. They used to float under the beam with nothing above
+     them: they now hang off a real bunting rail whose two ends are buried in
+     the gate legs, exactly like the papel picado strands below. */
+  var buntY = H - 3.14;
+  var buntRail = box(W - 1.6, 0.15, 0.15, toon(0x3a3f4a), 0, buntY, 0);
+  addOutline(buntRail, 0.045);
+  g.add(buntRail);
   var bannerCols = [COL.green, COL.white, COL.red];
   for (var i = 0; i < 12; i++) {
     var bnr = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.0),
       basic(bannerCols[i % 3], { side: THREE.DoubleSide }));
-    bnr.position.set(-W * 0.5 + 1.6 + i * (W / 11.2), H - 4.2, 0);
+    bnr.position.set(-W * 0.5 + 1.6 + i * (W / 11.2), buntY - 1.03, 0);
     bnr.userData.wave = i * 0.7;
     bnr.userData.banner = true;
     g.add(bnr);
   }
-  // papel picado swagged under the beam of the gate itself
-  var p1 = papelStrand(W - 1.0, 11, H - 4.4, 1.1, 3);
+  // papel picado swagged between the two legs of the gate itself
+  var p1 = papelStrand(W - 2.0, 11, H - 4.4, 1.5, 3);
   p1.position.z = 0.9;
   g.add(p1);
   BANNERS.push(p1);
-  var p2 = papelStrand(W - 1.0, 11, H - 6.2, 0.9, 6);
+  var p2 = papelStrand(W - 2.0, 11, H - 6.4, 1.25, 6);
   p2.position.z = -0.9;
   g.add(p2);
   BANNERS.push(p2);
@@ -3310,6 +3398,137 @@ function makeOfficer(uniform, prop) {
    ================================================================ */
 var van, vanBody, wheels = [], VAN_OUTLINE, vanShadow, exhaustAnchor;
 var rearDoorL = null, rearDoorR = null;
+var cargoHold = null;
+
+/* ---------------------------------------------------------------------------
+   THE CARGO HOLD
+   The load space you see through the open barn doors. Everything here lives
+   INSIDE the body box and is only ever visible through the rear aperture, so
+   it costs nothing while the van is intact.
+
+   Geometry, all in van-local space (forward = -Z):
+     aperture   x +/- HOLD_AP_X, y HOLD_AP_Y0 .. HOLD_AP_Y1, plane z 3.02
+     cavity     floor y 1.38, ceiling y 2.92, walls x +/- 1.16,
+                bulkhead behind the cab at z 0.50, opening at z 3.02
+   The whole thing is cel-shaded in three greys - dark ribbed floor, mid-dark
+   walls, slightly lighter ceiling - so the opening reads as HOLLOW and lit
+   from the doorway rather than as a painted panel.
+   --------------------------------------------------------------------------- */
+var BODY_D = 4.50;               // outer body depth, unchanged from before
+var HOLD_AP_X = 1.20, HOLD_AP_Y0 = 1.34, HOLD_AP_Y1 = 2.90;
+var HOLD_Z0 = 0.55, HOLD_Z1 = 3.02;
+
+function buildCargoHold(parent) {
+  var g = new THREE.Group();
+  cargoHold = g;
+  var LEN = HOLD_Z1 - HOLD_Z0, ZC = (HOLD_Z0 + HOLD_Z1) * 0.5;
+
+  var floorM = toon(0x33383f);        // dark grey ribbed deck
+  var ribM   = toon(0x22262c);
+  var wallM  = toon(0x4c515a);        // side walls, in shadow
+  var wellM  = toon(0x5b616b);        // wheel-well bumps
+  var ceilM  = toon(0x424750);        // ceiling, a shade lighter than the walls
+  var bulkM  = toon(0x565c66);        // partition behind the cab
+  var strapM = toon(0x2f333a);
+  /* the freight that STAYS aboard is a DARKER card than the boxes that spill
+     out on a hit (0x9c7648), so the two are never confused, and so the hold
+     keeps reading as a space in shadow */
+  var cardM  = toon(0x7d5c36), cardD = toon(0x54401f), tapeM = toon(0xb0a488);
+
+  // ---- floor: a dark slab with load-bed ribs running across it
+  var flr = box(2.34, 0.09, LEN, floorM, 0, 1.335, ZC);
+  g.add(flr);
+  for (var rr = 0; rr < 7; rr++) {
+    var rz = HOLD_Z0 + 0.24 + rr * ((LEN - 0.48) / 6);
+    var rib = box(2.28, 0.035, 0.11, ribM, 0, 1.395, rz);
+    rib.userData.noOutline = true;
+    g.add(rib);
+  }
+
+  // ---- side walls + a wheel-well bump on each side
+  for (var s = -1; s <= 1; s += 2) {
+    var wall = box(0.08, 1.55, LEN, wallM, s * 1.20, 2.15, ZC);
+    g.add(wall);
+    // vertical wall ribs
+    for (var wv = 0; wv < 4; wv++) {
+      var wz = HOLD_Z0 + 0.42 + wv * ((LEN - 0.84) / 3);
+      var wrib = box(0.05, 1.45, 0.09, toon(0x3c414a), s * 1.13, 2.15, wz);
+      wrib.userData.noOutline = true;
+      g.add(wrib);
+    }
+    var well = box(0.32, 0.46, 0.98, wellM, s * 1.00, 1.62, 2.15);
+    g.add(well);
+    var wellTop = box(0.34, 0.05, 1.00, toon(0x6a707a), s * 1.00, 1.87, 2.15);
+    wellTop.userData.noOutline = true;
+    g.add(wellTop);
+  }
+
+  // ---- ceiling
+  var ceil = box(2.34, 0.08, LEN, ceilM, 0, 2.96, ZC);
+  ceil.userData.noOutline = true;
+  g.add(ceil);
+  var ceilRib = box(2.30, 0.05, 0.10, toon(0x353a42), 0, 2.90, 2.20);
+  ceilRib.userData.noOutline = true;
+  g.add(ceilRib);
+  // a little interior lamp so the hold is obviously a lit space
+  var lamp = box(0.34, 0.06, 0.20, basic(0xffeec2), 0, 2.885, 2.62);
+  lamp.userData.noOutline = true;
+  g.add(lamp);
+
+  // ---- the bulkhead / partition behind the cab
+  var bulk = box(2.32, 1.55, 0.11, bulkM, 0, 2.15, HOLD_Z0 + 0.10);
+  g.add(bulk);
+  for (var bv = -1; bv <= 1; bv++) {
+    var bRib = box(0.09, 1.44, 0.05, toon(0x454a53), bv * 0.62, 2.15, HOLD_Z0 + 0.18);
+    bRib.userData.noOutline = true;
+    g.add(bRib);
+  }
+
+  // ---- the freight that STAYS aboard: three strapped cardboard boxes.
+  //      Deliberately a different colour pair from the ones that fall out.
+  var stack = [
+    [-0.52, 1.68, 1.20, 0.80, 0.62, 0.72],     // x, y, z, w, h, d
+    [-0.52, 2.28, 1.24, 0.72, 0.56, 0.66],
+    [ 0.56, 1.72, 1.34, 0.86, 0.70, 0.78]
+  ];
+  for (var bi = 0; bi < stack.length; bi++) {
+    var sb = stack[bi];
+    var cb = box(sb[3], sb[4], sb[5], cardM, sb[0], sb[1], sb[2]);
+    cb.rotation.y = (bi - 1) * 0.09;
+    g.add(cb);
+    var tp = box(0.13, sb[4] + 0.01, sb[5] + 0.01, tapeM, sb[0], sb[1], sb[2]);
+    tp.rotation.y = cb.rotation.y;
+    tp.userData.noOutline = true;
+    g.add(tp);
+    var lid = box(sb[3] + 0.01, 0.04, 0.05, cardD, sb[0], sb[1] + sb[4] * 0.5, sb[2]);
+    lid.rotation.y = cb.rotation.y;
+    lid.userData.noOutline = true;
+    g.add(lid);
+  }
+
+  // ---- the ratchet strap holding the stack down
+  var strap = box(2.24, 0.07, 0.05, strapM, 0, 2.22, 1.16);
+  strap.userData.noOutline = true;
+  g.add(strap);
+  var strapV = box(0.07, 0.86, 0.05, strapM, -0.94, 1.80, 1.16);
+  strapV.userData.noOutline = true;
+  g.add(strapV);
+  var ratchet = box(0.20, 0.24, 0.13, toon(0x8d939b), 0.02, 2.22, 1.16);
+  g.add(ratchet);
+
+  // ---- the spare tyre, stood against the left wall (axis across the van, so
+  //      only the tread is ever seen from the chase camera)
+  var spare = cyl(0.40, 0.40, 0.20, 12, toon(COL.tire), -0.92, 1.78, 2.62);
+  spare.rotation.z = Math.PI / 2;
+  g.add(spare);
+  var spareHub = cyl(0.17, 0.17, 0.22, 8, toon(0x7c838d), -0.92, 1.78, 2.62);
+  spareHub.rotation.z = Math.PI / 2;
+  spareHub.userData.noOutline = true;
+  g.add(spareHub);
+
+  parent.add(g);
+  return g;
+}
 
 function buildVan() {
   van = new THREE.Group();            // world transform (position / lane)
@@ -3333,9 +3552,42 @@ function buildVan() {
   REAR_TEX = tex(makeVanRearCanvas(), 1, 1);
   REAR_TEX.wrapS = REAR_TEX.wrapT = THREE.ClampToEdgeWrapping;
 
-  /* ---- main box body ---- */
-  var body = box(2.62, 1.95, 4.50, white, 0, 2.05, 0.75);
-  vanBody.add(body);
+  /* ---- main box body ------------------------------------------------------
+     The body used to be ONE solid box, and a solid box has no hole in it: its
+     rear face at z = 3.00 was exactly the flat white rectangle that filled the
+     doorway whenever the barn doors swung open.
+     It is now a SHELL - four wall panels and a front panel whose union is the
+     same outer box minus a real rear cavity (x +/- HOLD_AP_X, y HOLD_AP_Y0 ..
+     HOLD_AP_Y1, open from z HOLD_Z0 back to the doorway). The exterior
+     silhouette is unchanged, and the single inverted-hull outline below keeps
+     the van's stroke exactly as it was instead of inking five panel seams. */
+  var BZ0 = -1.50, BZ1 = 3.00, BZC = (BZ0 + BZ1) * 0.5, BZD = BZ1 - BZ0;
+  var BXO = 1.31, BY0 = 1.075, BY1 = 3.025;
+  var bodyPanels = [
+    [BXO - HOLD_AP_X, 1.95, BZD, -(BXO + HOLD_AP_X) * 0.5, 2.05, BZC],      // left wall
+    [BXO - HOLD_AP_X, 1.95, BZD, (BXO + HOLD_AP_X) * 0.5, 2.05, BZC],       // right wall
+    [BXO * 2, BY1 - HOLD_AP_Y1, BZD, 0, (HOLD_AP_Y1 + BY1) * 0.5, BZC],     // roof panel
+    [BXO * 2, HOLD_AP_Y0 - BY0, BZD, 0, (BY0 + HOLD_AP_Y0) * 0.5, BZC],     // floor panel
+    // the front block, closing the cavity off behind the cab
+    [HOLD_AP_X * 2, HOLD_AP_Y1 - HOLD_AP_Y0, HOLD_Z0 - BZ0,
+     0, (HOLD_AP_Y0 + HOLD_AP_Y1) * 0.5, (BZ0 + HOLD_Z0) * 0.5]
+  ];
+  for (var bp = 0; bp < bodyPanels.length; bp++) {
+    var P = bodyPanels[bp];
+    var panelM = box(P[0], P[1], P[2], white, P[3], P[4], P[5]);
+    panelM.userData.noOutline = true;
+    vanBody.add(panelM);
+  }
+  // one inverted hull for the whole body, so the outline is the old silhouette
+  var bodyHull = new THREE.Mesh(
+    new THREE.BoxGeometry(BXO * 2 + 0.09, (BY1 - BY0) + 0.09, BZD + 0.09),
+    outlineMat(COL.ink));
+  bodyHull.position.set(0, 2.05, BZC);
+  bodyHull.renderOrder = -1;
+  bodyHull.userData.isOutline = true;
+  vanBody.add(bodyHull);
+
+  buildCargoHold(vanBody);
   // roof cap: light grey trim, no brand colour on the bodywork
   var roof = box(2.50, 0.16, 4.40, trimL, 0, 3.06, 0.75);
   vanBody.add(roof);
@@ -3430,6 +3682,8 @@ function buildVan() {
      each leaf. The tail lenses ride on the doors too.
      Rotation is driven by updateVanDoors() and fires on every impact.       */
   var DOOR_X = 1.29, DOOR_Y = 2.05, DOOR_Z = 3.00;
+  // (the load space itself is built by buildCargoHold(), called above, so the
+  //  open doorway shows a real shaded interior instead of a flat dark plane)
   rearDoorL = new THREE.Group();
   rearDoorL.position.set(-DOOR_X, DOOR_Y, DOOR_Z);
   vanBody.add(rearDoorL);
@@ -3441,6 +3695,30 @@ function buildVan() {
     var inward = -dside;                       // toward the centreline
     var leaf = box(DOOR_X, 1.90, 0.16, white, inward * DOOR_X * 0.5, 0, 0);
     doorG.add(leaf);
+    /* ---- the INNER face of the leaf.
+       A van door is white on the outside and bare painted metal on the inside.
+       The leaf is one box with one material, so the inside gets its own thin
+       skin, a pressed panel inset and an interior handle - otherwise a swung
+       door shows a second flat white rectangle beside the doorway.        */
+    var inSkin = box(DOOR_X - 0.03, 1.86, 0.03, toon(0x4a4f58), inward * DOOR_X * 0.5, 0, -0.088);
+    inSkin.userData.noOutline = true;
+    doorG.add(inSkin);
+    var inPanel = box(DOOR_X * 0.66, 1.34, 0.025, toon(0x373c45), inward * DOOR_X * 0.5, -0.06, -0.104);
+    inPanel.userData.noOutline = true;
+    doorG.add(inPanel);
+    // two pressed ribs across the inset, so the panel reads as stamped metal
+    for (var rb = -1; rb <= 1; rb += 2) {
+      var rib = box(DOOR_X * 0.60, 0.05, 0.02, toon(0x5a606a), inward * DOOR_X * 0.5, rb * 0.46, -0.116);
+      rib.userData.noOutline = true;
+      doorG.add(rib);
+    }
+    // the interior handle + its latch rod
+    var inHandle = box(0.10, 0.10, 0.16, toon(0x9aa3ad), inward * (DOOR_X - 0.24), -0.10, -0.17);
+    inHandle.userData.noOutline = true;
+    doorG.add(inHandle);
+    var inRod = box(0.05, 1.20, 0.05, toon(0x777e88), inward * (DOOR_X - 0.24), 0.50, -0.125);
+    inRod.userData.noOutline = true;
+    doorG.add(inRod);
     // the vertical seam bead on the free (inner) edge
     var bead = box(0.05, 1.86, 0.19, trimL, inward * (DOOR_X - 0.04), 0, 0.01);
     bead.userData.noOutline = true;
@@ -4038,6 +4316,227 @@ function resetDriver() {
     driverArmInner.rotation.set(-0.55, 0, 0);
   }
   if (bubbleMesh) bubbleMesh.visible = false;
+}
+
+/* ================================================================
+   6c. IMPACT DAMAGE  -  rear doors, spilled cargo, flying paperwork
+
+   Every obstacle hit now costs the driver something visible:
+     - the rear double doors bang open (~100 deg each over 0.25 s), hold for
+       three quarters of a second and swing shut again over 0.4 s
+     - two to four cardboard boxes tumble out of the back, bounce once on the
+       tarmac and recede behind the van
+     - three to five sheets of paperwork flutter out of the PASSENGER (right)
+       window, drift back and up, and fade out inside 1.2 s
+
+   Everything here is decorative: the boxes and the sheets are plain scene
+   objects that are never registered as obstacles, never tested for collision
+   and never counted by the course audit. Both are pooled, and both are wiped
+   by resetVanDamage() so a restart starts with a closed, full van.
+   ================================================================ */
+
+/* ---- the doors --------------------------------------------------------- */
+var DOOR_OPEN_ANG = 1.75;                 // ~100 degrees per leaf
+var VANDOOR = { t: -1 };                  // t < 0 = closed and idle
+function vanDoorsBurst() { VANDOOR.t = 0; }
+function updateVanDoors(dt) {
+  if (!rearDoorL || !rearDoorR || VANDOOR.t < 0) return;
+  VANDOOR.t += dt;
+  var t = VANDOOR.t, k;
+  if (t < 0.25) k = clamp(easeOutBack(t / 0.25), 0, 1.06);   // bang open
+  else if (t < 1.00) k = 1;                                  // hang open
+  else if (t < 1.40) k = 1 - easeInOutCubic((t - 1.00) / 0.40);   // swing shut
+  else { k = 0; VANDOOR.t = -1; }
+  var a = DOOR_OPEN_ANG * k;
+  rearDoorL.rotation.y = -a;               // free edges sweep BACKWARD
+  rearDoorR.rotation.y = a;
+}
+function resetVanDoors() {
+  VANDOOR.t = -1;
+  if (rearDoorL) rearDoorL.rotation.y = 0;
+  if (rearDoorR) rearDoorR.rotation.y = 0;
+}
+
+/* ---- the cargo boxes --------------------------------------------------- */
+var CARGO_MAX = 12;
+var cargoPool = [], cargoLive = [];
+function makeCargoBoxMesh() {
+  var g = new THREE.Group();
+  var card = toon(0x9c7648), cardD = toon(0x77572f), tape = toon(0xd9cdb4);
+  var b = box(0.62, 0.50, 0.54, card, 0, 0, 0);
+  addOutline(b, 0.045); g.add(b);
+  // packing tape: one band right round the girth
+  var band = box(0.15, 0.52, 0.56, tape, 0, 0, 0);
+  band.userData.noOutline = true; g.add(band);
+  var band2 = box(0.64, 0.52, 0.15, tape, 0, 0, 0);
+  band2.userData.noOutline = true; g.add(band2);
+  // the flap seam across the lid
+  var seam = box(0.63, 0.04, 0.05, cardD, 0, 0.255, 0);
+  seam.userData.noOutline = true; g.add(seam);
+  g.userData.noOutline = true;
+  return g;
+}
+function acquireCargo() {
+  var b = cargoPool.length ? cargoPool.pop() : (function () {
+    var x = makeCargoBoxMesh(); scene.add(x); return x;
+  })();
+  b.visible = true;
+  return b;
+}
+function clearCargo() {
+  for (var i = 0; i < cargoLive.length; i++) { cargoLive[i].visible = false; cargoPool.push(cargoLive[i]); }
+  cargoLive.length = 0;
+}
+function spawnCargoBoxes() {
+  if (!van) return;
+  var n = 2 + Math.floor(Math.random() * 3);          // 2 - 4 boxes
+  for (var i = 0; i < n; i++) {
+    if (cargoLive.length >= CARGO_MAX) break;
+    var b = acquireCargo();
+    var u = b.userData;
+    // out of the cargo area, through the open doorway
+    b.position.set(van.position.x + (Math.random() - 0.5) * 1.4,
+                   van.position.y + 1.30 + Math.random() * 0.55,
+                   van.position.z + 2.9 + Math.random() * 0.6);
+    b.rotation.set(Math.random() * 3.1, Math.random() * 3.1, Math.random() * 3.1);
+    var sc = 0.82 + Math.random() * 0.42;
+    b.scale.setScalar(sc);
+    u.sc = sc;
+    u.vx = (Math.random() - 0.5) * 3.6;
+    u.vy = 2.2 + Math.random() * 3.4;
+    /* forward is -Z, so the van's own world velocity is -speed. A box that
+       keeps only a fraction of it is left behind, which is exactly how it
+       should read: it falls out of the back and the van drives away. */
+    u.vz = -GAME.speed * 0.42 + (2 + Math.random() * 3);
+    u.rx = (Math.random() - 0.5) * 9;
+    u.ry = (Math.random() - 0.5) * 7;
+    u.rz = (Math.random() - 0.5) * 9;
+    u.age = 0; u.bounced = false;
+    cargoLive.push(b);
+  }
+}
+function updateCargoBoxes(dt) {
+  for (var i = cargoLive.length - 1; i >= 0; i--) {
+    var b = cargoLive[i], u = b.userData;
+    u.age += dt;
+    u.vy -= 26 * dt;
+    b.position.x += u.vx * dt;
+    b.position.y += u.vy * dt;
+    b.position.z += u.vz * dt;
+    b.rotation.x += u.rx * dt;
+    b.rotation.y += u.ry * dt;
+    b.rotation.z += u.rz * dt;
+
+    var bd = -b.position.z;
+    var gy = hasGround(bd) ? roadHeightAt(bd) : -500;     // over a jump gap: falls
+    var rest = gy + 0.30 * u.sc;
+    if (b.position.y <= rest && u.vy < 0) {
+      b.position.y = rest;
+      if (!u.bounced) {                                   // exactly one bounce
+        u.bounced = true;
+        u.vy = -u.vy * 0.38;
+        u.vx *= 0.55;
+        u.rx *= 0.5; u.ry *= 0.5; u.rz *= 0.5;
+      } else {
+        u.vy = 0;
+        u.vx = damp(u.vx, 0, 5, dt);
+        u.rx = damp(u.rx, 0, 8, dt);
+        u.ry = damp(u.ry, 0, 8, dt);
+        u.rz = damp(u.rz, 0, 8, dt);
+      }
+    }
+    if (u.age > 6 || b.position.y < -60 ||
+        (GAME.dist - bd) > CFG.DESPAWN_BEHIND + 40) {
+      b.visible = false;
+      cargoPool.push(b);
+      cargoLive.splice(i, 1);
+    }
+  }
+}
+
+/* ---- the paperwork ----------------------------------------------------- */
+/* Deliberately SMALL and FEW: a handful of loose sheets whipping out of the
+   passenger window, no sound, gone in just over a second. It is a garnish on
+   the crash, not a second effect competing with the boxes. */
+var PAPER_MAX = 12;
+var paperPool = [], paperLive = [];
+function makePaperSheet() {
+  var m = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.22),
+    new THREE.MeshBasicMaterial({
+      color: 0xfbf8ef, side: THREE.DoubleSide, transparent: true,
+      opacity: 1, depthWrite: false, fog: false
+    }));
+  m.visible = false;
+  m.frustumCulled = false;
+  m.userData.noOutline = true;
+  scene.add(m);
+  return m;
+}
+function clearPapers() {
+  for (var i = 0; i < paperLive.length; i++) { paperLive[i].visible = false; paperPool.push(paperLive[i]); }
+  paperLive.length = 0;
+}
+function spawnPapers() {
+  if (!van) return;
+  var n = 3 + Math.floor(Math.random() * 3);          // 3 - 5 sheets
+  for (var i = 0; i < n; i++) {
+    if (paperLive.length >= PAPER_MAX) break;
+    var p = paperPool.length ? paperPool.pop() : makePaperSheet();
+    var u = p.userData;
+    // the PASSENGER window is the right-hand one: van-local x = +1.35
+    p.position.set(van.position.x + 1.34 + Math.random() * 0.18,
+                   van.position.y + 2.34 + Math.random() * 0.26,
+                   van.position.z - 1.05 + (Math.random() - 0.5) * 0.5);
+    p.rotation.set(Math.random() * 3.1, Math.random() * 3.1, Math.random() * 3.1);
+    u.vx = 1.3 + Math.random() * 1.6;                 // blown outboard, to the right
+    u.vy = 1.5 + Math.random() * 1.5;                 // and up
+    /* Paper keeps most of the van's own momentum, so it slides back past the
+       cab over about a second rather than snapping out of frame: at 0.28 the
+       sheets were behind the chase camera before the player could see them. */
+    u.vz = -GAME.speed * 0.72 + (1.5 + Math.random() * 2.5);
+    u.rx = (Math.random() - 0.5) * 7;
+    u.ry = (Math.random() - 0.5) * 6;
+    u.ph = Math.random() * 6.28;
+    u.age = 0;
+    u.life = 1.05 + Math.random() * 0.2;              // gone inside ~1.2 s
+    p.material.opacity = 1;
+    p.visible = true;
+    paperLive.push(p);
+  }
+}
+function updatePapers(dt) {
+  for (var i = paperLive.length - 1; i >= 0; i--) {
+    var p = paperLive[i], u = p.userData;
+    u.age += dt;
+    var k = u.age / u.life;
+    if (k >= 1) {
+      p.visible = false;
+      paperPool.push(p);
+      paperLive.splice(i, 1);
+      continue;
+    }
+    u.vy -= 2.4 * dt;                                  // paper barely falls
+    p.position.x += (u.vx + Math.sin(u.age * 13 + u.ph) * 1.4) * dt;
+    p.position.y += u.vy * dt;
+    p.position.z += u.vz * dt;
+    // the flutter: tumbling on two axes plus a wobble on the third
+    p.rotation.x += u.rx * dt;
+    p.rotation.y += u.ry * dt;
+    p.rotation.z += Math.sin(u.age * 11 + u.ph) * 3.2 * dt;
+    p.material.opacity = clamp(1 - Math.max(0, k - 0.45) / 0.55, 0, 1);
+  }
+}
+
+/* fired by every real impact */
+function vanDamageBurst() {
+  vanDoorsBurst();
+  spawnCargoBoxes();
+  spawnPapers();
+}
+function resetVanDamage() {
+  resetVanDoors();
+  clearCargo();
+  clearPapers();
 }
 
 /* ================================================================
@@ -4920,6 +5419,7 @@ function acquireCoin() {
   var c = coinPool.length ? coinPool.pop() : (function () { var x = makeCoin(); scene.add(x); return x; })();
   c.visible = true;
   c.scale.set(1, 1, 1);
+  if (c.userData.halo) c.userData.halo.scale.setScalar(1);
   return c;
 }
 function releaseCoin(c) { c.visible = false; coinPool.push(c); }
@@ -4928,18 +5428,233 @@ function clearCoins() {
   activeCoins.length = 0;
 }
 
-function fxCoinSparkle(x, y, z) {
-  var n = IS_MOBILE ? 9 : 16;
+/* ===========================================================================
+   8b-ii. COIN PICKUP FX
+   The old pickup grew the coin to 2.5x and flew it at the camera, which reads
+   as the coin attacking the player. The new one is the arcade-standard three
+   part burst:
+     1. the coin SNAPS to the van over COIN_SNAP seconds, shrinking with a fast
+        spin (never scaling up, never moving toward the camera)
+     2. it pops into a ring of 8-10 gold sparkles plus one short expanding ring
+     3. a "+100" (x mult) floating number rises and fades from the PICKUP spot,
+        and a 2D gold coin icon flies along a curve to the HUD counter, which
+        bumps as it lands - and only then does the counter increment.
+   =========================================================================== */
+var COIN_SNAP = 0.08;
+
+/* ---- the expanding ring ------------------------------------------------- */
+var RING_TEX = null, ringPool = [], ringLive = [];
+function makeRingTexture() {
+  var S = 128, c = cv(S, S), g = c.getContext('2d');
+  g.clearRect(0, 0, S, S);
+  g.lineWidth = 11;
+  g.strokeStyle = 'rgba(255,226,119,0.95)';
+  g.beginPath(); g.arc(S / 2, S / 2, S * 0.36, 0, Math.PI * 2); g.stroke();
+  g.lineWidth = 4;
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.beginPath(); g.arc(S / 2, S / 2, S * 0.30, 0, Math.PI * 2); g.stroke();
+  return new THREE.CanvasTexture(c);
+}
+function acquireRing() {
+  if (ringPool.length) return ringPool.pop();
+  if (!RING_TEX) RING_TEX = makeRingTexture();
+  var m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+    map: RING_TEX, transparent: true, depthWrite: false, fog: false,
+    blending: THREE.AdditiveBlending, opacity: 1
+  }));
+  m.visible = false;
+  m.frustumCulled = false;
+  m.userData.noOutline = true;
+  m.renderOrder = 4;
+  scene.add(m);
+  return m;
+}
+function fxRing(x, y, z, life, s0, s1) {
+  if (ringLive.length > 10) return;
+  var m = acquireRing();
+  m.visible = true;
+  m.position.set(x, y, z);
+  m.material.opacity = 1;
+  m.userData.age = 0;
+  m.userData.life = life || 0.30;
+  m.userData.s0 = s0 || 0.7;
+  m.userData.s1 = s1 || 3.4;
+  m.scale.set(m.userData.s0, m.userData.s0, 1);
+  ringLive.push(m);
+}
+function updateRings(dt) {
+  for (var i = ringLive.length - 1; i >= 0; i--) {
+    var m = ringLive[i], u = m.userData;
+    u.age += dt;
+    var k = clamp(u.age / u.life, 0, 1);
+    var s = lerp(u.s0, u.s1, 1 - Math.pow(1 - k, 2));
+    m.scale.set(s, s, 1);
+    m.material.opacity = 1 - k;
+    m.quaternion.copy(camera.quaternion);
+    if (k >= 1) { m.visible = false; ringPool.push(m); ringLive.splice(i, 1); }
+  }
+}
+function clearRings() {
+  for (var i = 0; i < ringLive.length; i++) { ringLive[i].visible = false; ringPool.push(ringLive[i]); }
+  ringLive.length = 0;
+}
+
+/* ---- the floating "+100" ------------------------------------------------ */
+var POPNUM_TEX = {}, popPool = [], popLive = [];
+function popNumTexture(txt) {
+  if (POPNUM_TEX[txt]) return POPNUM_TEX[txt];
+  var W = 256, H = 128, c = cv(W, H), g = c.getContext('2d');
+  g.clearRect(0, 0, W, H);
+  inkText(g, txt, W / 2, H * 0.54, W * 0.90, 92, '#FFD75E', 13);
+  var t = new THREE.CanvasTexture(c);
+  t.anisotropy = MAXANISO;
+  POPNUM_TEX[txt] = t;
+  return t;
+}
+function fxPopNumber(x, y, z, txt) {
+  if (popLive.length > 8) return;
+  var m;
+  if (popPool.length) m = popPool.pop();
+  else {
+    /* depthTest off: a floating score number is a read-out, not a solid, and
+       a pickup taken level with the van would otherwise vanish inside it */
+    m = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.95), new THREE.MeshBasicMaterial({
+      transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 1
+    }));
+    m.visible = false; m.frustumCulled = false;
+    m.userData.noOutline = true; m.renderOrder = 5;
+    scene.add(m);
+  }
+  m.material.map = popNumTexture(txt);
+  m.material.needsUpdate = true;
+  m.material.opacity = 1;
+  m.visible = true;
+  m.position.set(x, y + 0.3, z);
+  m.scale.set(0.2, 0.2, 1);
+  m.userData.age = 0;
+  m.userData.life = 0.78;
+  popLive.push(m);
+}
+function updatePopNumbers(dt) {
+  for (var i = popLive.length - 1; i >= 0; i--) {
+    var m = popLive[i], u = m.userData;
+    u.age += dt;
+    var k = clamp(u.age / u.life, 0, 1);
+    m.position.y += 2.4 * dt;
+    var s = k < 0.22 ? easeOutBack(k / 0.22) : 1;
+    m.scale.set(s, s, 1);
+    m.material.opacity = k < 0.55 ? 1 : (1 - (k - 0.55) / 0.45);
+    m.quaternion.copy(camera.quaternion);
+    if (k >= 1) { m.visible = false; popPool.push(m); popLive.splice(i, 1); }
+  }
+}
+function clearPopNumbers() {
+  for (var i = 0; i < popLive.length; i++) { popLive[i].visible = false; popPool.push(popLive[i]); }
+  popLive.length = 0;
+}
+
+/* ---- the 2D gold icon that flies to the HUD counter ---------------------- */
+var coinFlyLive = [], coinFlyPool = [], _flyProj = null, _bumpTimer = 0;
+function coinFlyHost() { return $('coinFly'); }
+function hudCoinTarget() {
+  var ic = document.querySelector('#coinBox .coinIcon');
+  var el = ic || $('coinBox');
+  if (!el) return { x: 40, y: 110 };
+  var r = el.getBoundingClientRect();
+  if (!r.width && !r.height) return { x: 40, y: 110 };
+  return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+}
+function spawnCoinFly(wx, wy, wz) {
+  var host = coinFlyHost();
+  if (!host || !camera) return;
+  if (coinFlyLive.length > 14) return;
+  if (!_flyProj) _flyProj = new THREE.Vector3();
+  _flyProj.set(wx, wy, wz).project(camera);
+  if (!isFinite(_flyProj.x) || !isFinite(_flyProj.y)) return;
+  var W = window.innerWidth || 800, H = window.innerHeight || 600;
+  var sx = clamp((_flyProj.x * 0.5 + 0.5) * W, -60, W + 60);
+  var sy = clamp((-_flyProj.y * 0.5 + 0.5) * H, -60, H + 60);
+  var tgt = hudCoinTarget();
+  var el = coinFlyPool.length ? coinFlyPool.pop() : (function () {
+    var d = document.createElement('div');
+    d.className = 'cfly';
+    host.appendChild(d);
+    return d;
+  })();
+  el.style.display = 'block';
+  var f = {
+    el: el, t: 0, dur: 0.46 + Math.random() * 0.10,
+    x0: sx, y0: sy, x1: tgt.x, y1: tgt.y,
+    // control point: lift the arc up and out so it reads as a curve
+    cx: sx + (tgt.x - sx) * 0.30 + (Math.random() - 0.5) * 90,
+    cy: Math.min(sy, tgt.y) - 70 - Math.random() * 70
+  };
+  el.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) scale(1)';
+  coinFlyLive.push(f);
+}
+function updateCoinFly(dt) {
+  var tgt = coinFlyLive.length ? hudCoinTarget() : null;
+  for (var i = coinFlyLive.length - 1; i >= 0; i--) {
+    var f = coinFlyLive[i];
+    f.t += dt;
+    var k = clamp(f.t / f.dur, 0, 1);
+    var e = k * k * (3 - 2 * k);                      // smoothstep
+    if (tgt) { f.x1 = tgt.x; f.y1 = tgt.y; }
+    var iv = 1 - e;
+    var px = iv * iv * f.x0 + 2 * iv * e * f.cx + e * e * f.x1;
+    var py = iv * iv * f.y0 + 2 * iv * e * f.cy + e * e * f.y1;
+    var sc = 1 - 0.35 * e;
+    f.el.style.transform = 'translate(' + px.toFixed(1) + 'px,' + py.toFixed(1) + 'px) scale(' + sc.toFixed(2) + ')';
+    if (k >= 1) {
+      f.el.style.display = 'none';
+      coinFlyPool.push(f.el);
+      coinFlyLive.splice(i, 1);
+      GAME.coinsHud++;                                // THE COUNTER TICKS HERE
+      bumpCoinBox();
+    }
+  }
+  /* safety: if an icon could never be spawned (no camera, off screen, a
+     restart mid-flight) the HUD must still agree with the real count */
+  if (!coinFlyLive.length && GAME.coinsHud !== GAME.coins) GAME.coinsHud = GAME.coins;
+  if (_bumpTimer > 0) {
+    _bumpTimer -= dt;
+    if (_bumpTimer <= 0) { var cb = $('coinBox'); if (cb) cb.className = ''; }
+  }
+}
+function bumpCoinBox() {
+  var cb = $('coinBox');
+  if (!cb) return;
+  cb.className = '';
+  void cb.offsetWidth;
+  cb.className = 'bump';
+  _bumpTimer = 0.26;
+}
+function clearCoinFly() {
+  for (var i = 0; i < coinFlyLive.length; i++) {
+    coinFlyLive[i].el.style.display = 'none';
+    coinFlyPool.push(coinFlyLive[i].el);
+  }
+  coinFlyLive.length = 0;
+  _bumpTimer = 0;
+  var cb = $('coinBox');
+  if (cb) cb.className = '';
+}
+
+/* the pop itself: 8-10 sparkles in a ring, plus one short expanding ring */
+function fxCoinBurst(x, y, z) {
+  var n = IS_MOBILE ? 8 : 10;
   for (var i = 0; i < n; i++) {
-    var a = Math.random() * Math.PI * 2;
+    var a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
+    var sp = 4.2 + Math.random() * 2.6;
     emit({
       x: x, y: y, z: z,
-      vx: Math.cos(a) * (2 + Math.random() * 5), vy: 1.5 + Math.random() * 5, vz: Math.sin(a) * (2 + Math.random() * 5),
-      life: 0.32 + Math.random() * 0.25, size: 0.16 + Math.random() * 0.2,
+      vx: Math.cos(a) * sp, vy: 1.4 + Math.random() * 3.4, vz: Math.sin(a) * sp * 0.85,
+      life: 0.26 + Math.random() * 0.16, size: 0.15 + Math.random() * 0.13,
       color: i % 3 === 0 ? 0xffffff : (i % 3 === 1 ? COL.gold : COL.goldL),
-      grav: 6, spin: 8
+      grav: 7, spin: 11
     });
   }
+  fxRing(x, y, z, 0.28, 0.6, 3.2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -4965,18 +5680,22 @@ function collectCoin(c) {
   var u = c.userData;
   if (u.taken) return;
   u.taken = true;
-  u.pop = 0.16;
+  /* the SNAP, not a pop-and-grow: remember where the coin was so the floating
+     number and the flying HUD icon both start at the real pickup spot */
+  u.pop = 0;
+  u.px = c.position.x; u.py = c.position.y; u.pz = c.position.z;
   GAME.coins++;
   GAME.streak++;
   if (GAME.streak > GAME.bestStreak) GAME.bestStreak = GAME.streak;
   var m = streakMult();
   GAME.coinPts += 100 * m;
-  SFX.coin(Math.min(GAME.streak - 1, 12));
+  SFX.coin(Math.min(GAME.streak - 1, 12));          // the rising-pitch ding stays
+  fxPopNumber(u.px, u.py, u.pz, '+' + (100 * m));
+  spawnCoinFly(u.px, u.py, u.pz);
   if (GAME.streak === STREAK_X2 || GAME.streak === STREAK_X3) {
     toastCol('¡RACHA x' + m + '!', 'gold');
   }
   if (GAME.coins > 0 && GAME.coins % 25 === 0) { SFX.grito(); toastCol('¡ÓRALE!', 'gold'); }
-  fxCoinSparkle(c.position.x, c.position.y, c.position.z);
 }
 
 function updateCoins(dt) {
@@ -4987,15 +5706,28 @@ function updateCoins(dt) {
     var u = c.userData;
 
     if (u.taken) {
-      u.pop -= dt;
-      var k = clamp(u.pop / 0.16, 0, 1);
-      var sc = 1 + (1 - k) * 1.5;
+      /* THE SNAP. The coin flies TOWARD THE VAN over COIN_SNAP seconds while
+         shrinking and spinning fast, then pops. It may never scale up and it
+         may never travel toward the camera - that was the old, wrong, feel. */
+      u.pop += dt;
+      var k = clamp(u.pop / COIN_SNAP, 0, 1);
+      var e = k * k;
+      /* the snap target is just clear of the roof line rather than the middle
+         of the bodywork, so the pop happens where the player can see it
+         instead of inside the van */
+      var tx = GAME.x, ty = GAME.y + 3.35, tz = -GAME.dist + 1.3;
+      c.position.set(lerp(u.px, tx, e), lerp(u.py, ty, e), lerp(u.pz, tz, e));
+      var sc = clamp(1 - 0.88 * e, 0.08, 1);
       c.scale.set(sc, sc, sc);
-      c.position.y += dt * 6;
-      u.spin.rotation.y += dt * 14;
-      if (u.halo) u.halo.quaternion.copy(camera.quaternion);
+      u.spin.rotation.y += dt * 46;
+      if (u.halo) {
+        u.halo.quaternion.copy(camera.quaternion);
+        u.halo.scale.setScalar(clamp(1 - 0.6 * e, 0.3, 1));
+      }
       if (u.dot) u.dot.visible = false;
-      if (u.pop <= 0) {
+      if (k >= 1) {
+        fxCoinBurst(c.position.x, c.position.y, c.position.z);
+        if (u.halo) u.halo.scale.setScalar(1);
         releaseCoin(c);
         activeCoins.splice(i, 1);
       }
@@ -5106,6 +5838,309 @@ function updateWarns() {
       activeWarns.splice(i, 1);
     }
   }
+}
+
+/* ================================================================
+   8e. SCRIPTED MOMENTS
+   Five set-pieces, each fired at most once per run, each cheap, and none of
+   them able to block or unfairly kill the player:
+
+     wave    a wave of rolling traffic leans across together, near the start
+             of the first TRÁFICO section. It is a LATERAL SWAY of at most
+             WAVE_AMP units inside each vehicle's own lane, never a real lane
+             change, so the corridor the solver proved is untouched.
+     birds   a flock lifts off the river as you pass mid-bridge.
+     wind    a crosswind gust: "¡VIENTO!", 1.5 s, nudges the van half a lane.
+             Steering keeps working the whole time, and it is scheduled inside
+             a ZONA TURBO in the second half, where hazards are sparse.
+     police  a Mexican police pickup runs alongside with its lights on for a
+             few seconds before the boundary, then pulls ahead and peels off.
+             Decorative: it holds the outer lane FURTHEST from the van and
+             leaves early if the player crowds it, so it can never be hit.
+     heli    a helicopter crosses overhead near the US side.
+
+   All of the state lives in MOMENT and is wiped by resetMoments(), which
+   resetRun() calls, so a restart never inherits a half-played set-piece.
+   ================================================================ */
+var momentPlan = [], momentCursor = 0;
+var WAVE_AMP = 1.45, WAVE_DUR = 2.6;
+var MOMENT = {
+  wave: -1, birds: -1, wind: -1, police: -1, heli: -1,
+  windDir: 0, policeSide: -1, policeD: 0, policeOff: 0, heliX: 0, heliZ: 0,
+  fired: { wave: 0, birds: 0, wind: 0, police: 0, heli: 0 }
+};
+function resetMoments() {
+  MOMENT.wave = MOMENT.birds = MOMENT.wind = MOMENT.police = MOMENT.heli = -1;
+  MOMENT.windDir = 0; MOMENT.policeD = 0; MOMENT.policeOff = 0;
+  MOMENT.heliX = 0; MOMENT.heliZ = 0;
+  MOMENT.fired.wave = MOMENT.fired.birds = MOMENT.fired.wind = 0;
+  MOMENT.fired.police = MOMENT.fired.heli = 0;
+  GAME.windX = 0;
+  momentCursor = 0;
+  if (birdFlock) birdFlock.visible = false;
+  if (policeTruck) policeTruck.visible = false;
+  if (heliRig) heliRig.visible = false;
+}
+function momentsFired() {
+  return MOMENT.fired.wave + MOMENT.fired.birds + MOMENT.fired.wind +
+         MOMENT.fired.police + MOMENT.fired.heli;
+}
+
+/* ---- the traffic wave --------------------------------------------------- */
+function startWave() {
+  MOMENT.wave = 0;
+  SFX.farHonk();
+  toastCol('¡SE MUEVEN TODOS!', 'orange');
+}
+function waveEnv() {
+  if (MOMENT.wave < 0) return 0;
+  return Math.sin(Math.PI * clamp(MOMENT.wave / WAVE_DUR, 0, 1));
+}
+function updateWave(dt) {
+  if (MOMENT.wave < 0) return;
+  MOMENT.wave += dt;
+  if (MOMENT.wave > WAVE_DUR) MOMENT.wave = -1;
+}
+
+/* ---- the bird flock ----------------------------------------------------- */
+var birdFlock = null, BIRDS = [];
+function buildBirds() {
+  birdFlock = new THREE.Group();
+  birdFlock.visible = false;
+  var m = toon(0x2f3540, { flat: true });
+  var n = IS_MOBILE ? 10 : 16;
+  for (var i = 0; i < n; i++) {
+    var b = new THREE.Group();
+    var body = box(0.22, 0.18, 0.74, m, 0, 0, 0);
+    body.userData.noOutline = true; b.add(body);
+    var head = box(0.16, 0.15, 0.20, m, 0, 0.06, -0.46);
+    head.userData.noOutline = true; b.add(head);
+    var wl = box(0.92, 0.05, 0.30, m, -0.52, 0.08, 0);
+    wl.userData.noOutline = true; b.add(wl);
+    var wr = box(0.92, 0.05, 0.30, m, 0.52, 0.08, 0);
+    wr.userData.noOutline = true; b.add(wr);
+    b.userData.wl = wl; b.userData.wr = wr;
+    b.userData.ph = i * 0.7;
+    birdFlock.add(b);
+    BIRDS.push(b);
+  }
+  scene.add(birdFlock);
+}
+function startBirds(d) {
+  if (!birdFlock) return;
+  MOMENT.birds = 0;
+  birdFlock.visible = true;
+  var side = (Math.random() < 0.5) ? -1 : 1;
+  for (var i = 0; i < BIRDS.length; i++) {
+    var b = BIRDS[i], u = b.userData;
+    /* far enough ahead, and climbing hard enough, that the flock clears the
+       deck line while it is still in front of a van doing 85 units a second */
+    b.position.set(side * (30 + Math.random() * 80),
+                   CFG.WATER_Y + 0.5 + Math.random() * 2.6,
+                   -(d + 150 + Math.random() * 190));
+    u.vx = side * (1.5 + Math.random() * 4.5);
+    u.vy = 9.0 + Math.random() * 4.5;
+    u.vz = -(3 + Math.random() * 9);
+    u.ph = Math.random() * 6.28;
+    b.rotation.set(0, 0, 0);
+  }
+  SFX.birds();
+}
+function updateBirds(dt) {
+  if (MOMENT.birds < 0) return;
+  MOMENT.birds += dt;
+  for (var i = 0; i < BIRDS.length; i++) {
+    var b = BIRDS[i], u = b.userData;
+    b.position.x += u.vx * dt;
+    b.position.y += u.vy * dt;
+    b.position.z += u.vz * dt;
+    u.vy = Math.max(1.6, u.vy - 1.6 * dt);
+    var f = Math.sin(WORLD_T * 13 + u.ph);
+    u.wl.rotation.z = f * 0.8;
+    u.wr.rotation.z = -f * 0.8;
+    b.rotation.y = Math.atan2(u.vx, -u.vz);
+  }
+  if (MOMENT.birds > 7.5) { MOMENT.birds = -1; birdFlock.visible = false; }
+}
+
+/* ---- the crosswind gust ------------------------------------------------- */
+var WIND_DUR = 1.5, WIND_PUSH = 2.2;          // half a lane (LANE_W * 0.5)
+function startWind() {
+  MOMENT.wind = 0;
+  MOMENT.windDir = (Math.random() < 0.5) ? -1 : 1;
+  pushNote('¡VIENTO!', 'mid', 'orange', 1.1, 'toast');
+  SFX.gust();
+}
+function updateWind(dt) {
+  if (MOMENT.wind < 0) { GAME.windX = 0; return; }
+  MOMENT.wind += dt;
+  var k = MOMENT.wind / WIND_DUR;
+  if (k >= 1) { MOMENT.wind = -1; GAME.windX = 0; return; }
+  GAME.windX = MOMENT.windDir * WIND_PUSH * Math.sin(Math.PI * k);
+  // dust streaks blowing across the deck, so the push is visible not just felt
+  if (Math.random() < 0.7) {
+    emit({
+      x: GAME.x - MOMENT.windDir * (10 + Math.random() * 8),
+      y: GAME.y + 0.3 + Math.random() * 2.6,
+      z: -(GAME.dist + 6 + Math.random() * 34),
+      vx: MOMENT.windDir * (30 + Math.random() * 16), vy: Math.random() * 1.4, vz: 5,
+      life: 0.36 + Math.random() * 0.18, size: 0.12 + Math.random() * 0.09, aspect: 7.5,
+      color: Math.random() > 0.5 ? 0xd6c39a : 0xe8dcc0
+    });
+  }
+}
+
+/* ---- the police escort -------------------------------------------------- */
+var policeTruck = null;
+function buildPolice() {
+  var g = makeCarBody({ w: 2.2, h1: 0.78, h2: 0.80, len: 5.2, cabLen: 1.8,
+                        cabZ: -0.55, color: 0xf2ede1, wheelR: 0.58 });
+  var navy = toon(0x1b2f5c), dk = toon(0x2b3038);
+  for (var s = -1; s <= 1; s += 2) {
+    var band = box(0.14, 0.44, 2.6, navy, s * 1.06, 1.30, -0.10);
+    band.userData.noOutline = true; g.add(band);
+    var wall = box(0.16, 0.55, 2.2, toon(0xf2ede1), s * 1.02, 1.5, 1.35);
+    g.add(wall);
+  }
+  var tail = box(2.2, 0.55, 0.16, toon(0xf2ede1), 0, 1.5, 2.5);
+  g.add(tail);
+  // the light bar
+  var barP = box(1.55, 0.13, 0.32, dk, 0, 2.36, -0.55);
+  g.add(barP);
+  var lampR = box(0.58, 0.26, 0.32, basic(0xff2a1e), -0.40, 2.53, -0.55);
+  lampR.userData.noOutline = true; g.add(lampR);
+  var lampB = box(0.58, 0.26, 0.32, basic(0x2f7fff), 0.40, 2.53, -0.55);
+  lampB.userData.noOutline = true; g.add(lampB);
+  outlineAll(g, 0.055);
+  g.userData.lampR = lampR;
+  g.userData.lampB = lampB;
+  g.visible = false;
+  scene.add(g);
+  policeTruck = g;
+}
+function startPolice() {
+  if (!policeTruck) return;
+  MOMENT.police = 0;
+  MOMENT.policeSide = (GAME.x > 0) ? -1 : 1;      // the outer lane furthest away
+  MOMENT.policeOff = -22;                         // catching up from behind
+  MOMENT.policeD = GAME.dist + MOMENT.policeOff;
+  policeTruck.visible = true;
+  SFX.siren();
+  toastCol('¡ESCOLTA!', 'blue');
+}
+function updatePolice(dt) {
+  if (MOMENT.police < 0) return;
+  MOMENT.police += dt;
+  var t = MOMENT.police;
+  var px = laneX(MOMENT.policeSide < 0 ? 0 : CFG.LANES - 1);
+  // crowd the escort and it leaves early - it can never be driven into
+  if (t < 4.6 && Math.abs(px - GAME.x) < 3.4 && Math.abs(MOMENT.policeD - GAME.dist) < 9) {
+    MOMENT.police = 4.6; t = 4.6;
+  }
+  /* the OFFSET from the van is what is damped, never the absolute distance:
+     damping an absolute position against a van doing 100 units a second
+     leaves the escort permanently ~18 units behind, i.e. off the back of the
+     chase camera. */
+  var tgtOff = (t < 1.1) ? -12 : (t < 4.6) ? 2.0 : (26 + (t - 4.6) * 48);
+  MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, 2.8, dt);
+  MOMENT.policeD = GAME.dist + MOMENT.policeOff;
+  policeTruck.position.set(px, roadHeightAt(MOMENT.policeD), -MOMENT.policeD);
+  policeTruck.rotation.y = 0;
+  var on = (Math.floor(WORLD_T * 7) % 2) === 0;
+  policeTruck.userData.lampR.material = basic(on ? 0xff2a1e : 0x5a1210);
+  policeTruck.userData.lampB.material = basic(on ? 0x6fb4ff : 0x14307f);
+  if (policeTruck.userData.wheels) {
+    for (var w = 0; w < policeTruck.userData.wheels.length; w++) {
+      policeTruck.userData.wheels[w].rotation.x -= (GAME.speed / 0.58) * dt;
+    }
+  }
+  if (t > 6.4 || MOMENT.policeD - GAME.dist > 240) {
+    MOMENT.police = -1;
+    policeTruck.visible = false;
+  }
+}
+
+/* ---- the helicopter ----------------------------------------------------- */
+var heliRig = null, heliRotor = null, heliTail = null;
+function buildHeli() {
+  var g = new THREE.Group();
+  var m = toon(0x2f4f7a), mD = toon(0x1b2f5c), gl = toon(COL.glass), dk = toon(0x2b3038);
+  var body = box(2.6, 2.2, 5.2, m, 0, 0, 0); g.add(body);
+  var nose = box(2.2, 1.5, 1.3, gl, 0, -0.10, -3.0); g.add(nose);
+  var boom = box(0.72, 0.72, 5.0, m, 0, 0.62, 4.3); g.add(boom);
+  var fin = box(0.24, 1.7, 1.1, mD, 0, 1.55, 6.4); g.add(fin);
+  var stab = box(2.4, 0.18, 0.9, mD, 0, 0.62, 6.0); stab.userData.noOutline = true; g.add(stab);
+  var mast = box(0.36, 0.72, 0.36, dk, 0, 1.48, 0); g.add(mast);
+  for (var s = -1; s <= 1; s += 2) {
+    var skid = box(0.16, 0.16, 4.4, dk, s * 1.05, -1.62, 0.2);
+    skid.userData.noOutline = true; g.add(skid);
+    for (var l = -1; l <= 1; l += 2) {
+      var leg = box(0.13, 0.62, 0.13, dk, s * 0.72, -1.35, l * 1.3);
+      leg.userData.noOutline = true; g.add(leg);
+    }
+  }
+  heliRotor = new THREE.Group();
+  heliRotor.position.set(0, 1.92, 0);
+  var b1 = box(12.0, 0.10, 0.58, dk, 0, 0, 0); b1.userData.noOutline = true; heliRotor.add(b1);
+  var b2 = box(0.58, 0.10, 12.0, dk, 0, 0, 0); b2.userData.noOutline = true; heliRotor.add(b2);
+  g.add(heliRotor);
+  heliTail = new THREE.Group();
+  heliTail.position.set(0.28, 1.55, 6.4);
+  var t1 = box(0.14, 2.4, 0.20, dk, 0, 0, 0); t1.userData.noOutline = true; heliTail.add(t1);
+  var t2 = box(0.14, 0.20, 2.4, dk, 0, 0, 0); t2.userData.noOutline = true; heliTail.add(t2);
+  g.add(heliTail);
+  outlineAll(g, 0.07);
+  g.visible = false;
+  scene.add(g);
+  heliRig = g;
+}
+function startHeli(d) {
+  if (!heliRig) return;
+  MOMENT.heli = 0;
+  MOMENT.heliX = (Math.random() < 0.5) ? -1 : 1;
+  MOMENT.heliZ = d + 120;
+  heliRig.visible = true;
+  SFX.heli();
+  toastCol('¡EL HELICÓPTERO!', 'blue');
+}
+function updateHeli(dt) {
+  if (MOMENT.heli < 0) return;
+  MOMENT.heli += dt;
+  var k = MOMENT.heli / 5.0;
+  var x = MOMENT.heliX * lerp(-235, 235, clamp(k, 0, 1));
+  /* it is held a fixed distance AHEAD of the van and closing, so it crosses
+     the sky in front of the windscreen rather than being overtaken in a
+     second and a half by a van doing 300 km/h */
+  var ahead = 100 - MOMENT.heli * 6;
+  heliRig.position.set(x, 46 + Math.sin(MOMENT.heli * 0.8) * 2.4, -(GAME.dist + ahead));
+  heliRig.rotation.y = MOMENT.heliX > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+  heliRig.rotation.z = MOMENT.heliX * -0.14;
+  if (heliRotor) heliRotor.rotation.y += dt * 26;
+  if (heliTail) heliTail.rotation.x += dt * 34;
+  if (k >= 1) { MOMENT.heli = -1; heliRig.visible = false; }
+}
+
+/* ---- the scheduler ------------------------------------------------------ */
+function updateMoments(dt) {
+  // only a live run may FIRE one; a set-piece already running is always
+  // allowed to finish, including through the customs sequence
+  if (GAME.state === 'PLAYING') {
+    while (momentCursor < momentPlan.length && GAME.dist > momentPlan[momentCursor].d) {
+      var mm = momentPlan[momentCursor++];
+      if (MOMENT.fired[mm.kind]) continue;
+      MOMENT.fired[mm.kind] = 1;
+      if (mm.kind === 'wave') startWave();
+      else if (mm.kind === 'birds') startBirds(GAME.dist);
+      else if (mm.kind === 'wind') startWind();
+      else if (mm.kind === 'police') startPolice();
+      else if (mm.kind === 'heli') startHeli(GAME.dist);
+    }
+  }
+  updateWave(dt);
+  updateBirds(dt);
+  updateWind(dt);
+  updatePolice(dt);
+  updateHeli(dt);
 }
 
 /* ================================================================
@@ -5922,6 +6957,7 @@ function generateCourse(seed) {
   var r = makeRNG(seed);
   obstaclePlan = []; boostPlan = []; sectionPlan = []; coinPlan = [];
   pickupPlan = []; warnPlan = []; PATTERN_LOG = []; CORRIDOR_SPANS = [];
+  momentPlan = []; momentCursor = 0;
   GEN_STATS = { movers: 0, moversMoved: 0, moversDropped: 0, retries: 0,
                 repaired: 0, seed: seed >>> 0 };
 
@@ -5929,6 +6965,14 @@ function generateCourse(seed) {
   var pathLane = 1 + Math.floor(r() * 2);
   var idx = 0;
   var used = {};                          // pattern name -> times used this run
+  /* THE RHYTHM. Sections alternate DENSE (a themed hazard section) and TURBO
+     (coins + chained boost pads, almost no hazards), so two dense sections can
+     never sit back to back without a reward stretch between them. The dense
+     themes themselves cycle OBRAS -> TRÁFICO -> AGUAS, so the middle of the
+     run stops being one long undifferentiated smear. */
+  var DENSE_CYCLE = ['CONSTRUCTION', 'TRAFFIC', 'MIXED'];
+  var denseIdx = 0;
+  var firstTrafficD = 0, turboStarts = [];
 
   sectionPlan.push({ d: 30, text: '¡VÁMONOS!', sub: 'LADO MEXICANO' });
 
@@ -5942,15 +6986,20 @@ function generateCourse(seed) {
     var dense = (idx % 2 === 0);
 
     if (dense) {
-      var kind = (idx % 4 === 0) ? 'CONSTRUCTION' : (idx % 4 === 2 ? 'TRAFFIC' : 'MIXED');
-      if (prog > 0.55 && r() > 0.6) kind = 'MIXED';
+      var kind = DENSE_CYCLE[denseIdx % DENSE_CYCLE.length];
+      denseIdx++;
+      if (kind === 'TRAFFIC' && !firstTrafficD) firstTrafficD = d;
       sectionPlan.push({ d: d - 62, text: THEMES[kind].label, sub: '', zone: 'dense', mark: 'start' });
       // the red "!" chevron, painted 35 units before the very first row
       warnPlan.push({ d: d - 35 });
 
-      /* 3 or 4 authored chunks back to back, least-used first so a run gets
-         a spread of the library rather than the same chunk five times */
-      var nChunks = (prog < 0.30) ? 3 : (3 + (r() < 0.55 ? 1 : 0));
+      /* 2 or 3 authored chunks back to back, least-used first so a run gets
+         a spread of the library rather than the same chunk five times.
+         It used to be 3-4, but rows are spaced off the (now higher) speed cap,
+         so 4 chunks became a thousand units of unbroken hazard - which is
+         exactly the monotonous middle being fixed. Shorter sections mean MORE
+         alternations between OBRAS / TRÁFICO / AGUAS and ZONA TURBO. */
+      var nChunks = (prog < 0.30) ? 3 : (2 + (r() < 0.5 ? 1 : 0));
       var lib = patternsFor(kind);
       for (var ci = 0; ci < nChunks; ci++) {
         if (d >= CFG.COURSE_D1 || jumpClearZone(d)) break;
@@ -5985,8 +7034,11 @@ function generateCourse(seed) {
 
       // ---- the section is over: score it, then hand out a breather
       sectionPlan.push({ d: d + 4, zone: 'calm', perfect: 1 });
-      boostPlan.push({ d: d + 20, lane: pathLane });
-      boostPlan.push({ d: d + 30, lane: pathLane });
+      // a short two-pad chain as the reward, staggered so it still asks for a
+      // lane change and can start a TURBO x2
+      var rwL2 = clamp(pathLane + (r() < 0.5 ? -1 : 1), 0, CFG.LANES - 1);
+      boostPlan.push({ d: d + 20, lane: pathLane, chain: 1 });
+      boostPlan.push({ d: d + 20 + Math.max(24, speedCapAt(d) * 0.40), lane: rwL2, chain: 1 });
       coinLine(coinPlan, d + 8, pathLane, 4, 5);
       addCoin(coinPlan, d + 22, clamp(pathLane - 1, 0, CFG.LANES - 1), undefined);
       addCoin(coinPlan, d + 22, clamp(pathLane + 1, 0, CFG.LANES - 1), undefined);
@@ -5996,9 +7048,15 @@ function generateCourse(seed) {
                         kind: (idx % 4 === 0) ? 'magnet' : 'shield' });
       d += 66;
     } else {
-      // ---- SPARSE / BOOST ZONE ----
-      var slen = 140 + Math.floor(r() * 70);
+      /* ---- ZONA TURBO ------------------------------------------------------
+         The reward stretch, and the fastest part of the run. Instead of one
+         line of pads in a single lane it lays a CHAIN of 3-4 pads in a
+         STAGGERED lane sequence, spaced off the local speed cap, so the player
+         weaves through them and can hold TURBO x2 / x3 all the way across.
+         Almost no hazards, coins on every pad, music goes huapango.        */
+      var slen = 300 + Math.floor(r() * 140);
       sectionPlan.push({ d: d - 50, text: '¡ZONA TURBO!', sub: '', zone: 'turbo' });
+      turboStarts.push(d);
       var end2 = d + slen;
       var lane = pathLane;
       /* the sparse stretch has a corridor too: the chain of boost pads. It is
@@ -6007,31 +7065,42 @@ function generateCourse(seed) {
       sparseSpan.lanes[lane] = 1;
       CORRIDOR_SPANS.push(sparseSpan);
       while (d < end2 && d < CFG.COURSE_D1 && !jumpClearZone(d)) {
-        var chain = 3 + Math.floor(r() * 3);
-        if (r() > 0.55) lane = clamp(lane + (r() > 0.5 ? 1 : -1), 0, CFG.LANES - 1);
-        sparseSpan.lanes[lane] = 1;
+        var chain = 3 + (r() < 0.5 ? 1 : 0);                // 3 or 4 pads
+        // one lane change per pad, and it must FIT: derived from the cap so a
+        // 0.25 s lane change always lands before the next pad
+        var padGap = Math.max(26, speedCapAt(d) * 0.42);
         for (var k = 0; k < chain; k++) {
-          boostPlan.push({ d: d + k * 10, lane: lane });
-          if (r() > 0.72) {
-            var l2 = clamp(lane + 1, 0, CFG.LANES - 1);
-            sparseSpan.lanes[l2] = 1;
-            boostPlan.push({ d: d + k * 10, lane: l2 });
+          sparseSpan.lanes[lane] = 1;
+          boostPlan.push({ d: d + k * padGap, lane: lane, chain: 1 });
+          // gold ON the pad and half way to the next one, so the coin trail
+          // and the chain are the same line
+          addCoin(coinPlan, d + k * padGap, lane, undefined);
+          if (k + 1 < chain) {
+            var nl = clamp(lane + (r() < 0.5 ? -1 : 1), 0, CFG.LANES - 1);
+            if (nl === lane) nl = clamp(lane + (lane === 0 ? 1 : -1), 0, CFG.LANES - 1);
+            sparseSpan.lanes[nl] = 1;
+            addCoin(coinPlan, d + k * padGap + padGap * 0.5, nl, undefined);
+            lane = nl;
           }
         }
+        var chainEnd = d + (chain - 1) * padGap;
         // coins: a long line, or a zig-zag between two lanes
         if (r() > 0.5) {
-          coinLine(coinPlan, d + chain * 10 + 4, lane, 5 + Math.floor(r() * 4), 5.5);
+          coinLine(coinPlan, chainEnd + 12, lane, 5 + Math.floor(r() * 4), 5.5);
         } else {
           var lb = clamp(lane + (r() > 0.5 ? 1 : -1), 0, CFG.LANES - 1);
           sparseSpan.lanes[lb] = 1;
-          coinZig(coinPlan, d + chain * 10 + 4, lane, lb, 6 + Math.floor(r() * 3), 6.5);
+          coinZig(coinPlan, chainEnd + 12, lane, lb, 6 + Math.floor(r() * 3), 6.5);
         }
         // the lone hazard in a turbo zone still owes the player 1.1 s, and in
         // a turbo zone the van is fast, so the advance is derived from the cap
-        d += chain * 10 + Math.max(40, rowGapAt(d));
-        if (r() > 0.62) {
+        d = chainEnd + Math.max(46, rowGapAt(d));
+        if (r() > 0.72) {
           var oL = (lane + 1 + Math.floor(r() * (CFG.LANES - 1))) % CFG.LANES;
-          obstaclePlan.push({ d: d - 14, lane: oL, type: r() > 0.6 ? 'oil' : 'drum', speed: 0 });
+          // never inside the pad chain: a ZONA TURBO is a reward stretch
+          if (!sparseSpan.lanes[oL]) {
+            obstaclePlan.push({ d: d - 14, lane: oL, type: r() > 0.6 ? 'oil' : 'drum', speed: 0 });
+          }
         }
         /* ---- an 18-wheeler grinding along an outside lane. Sparse sections
            are where a big rig reads best: acres of room, one enormous slow
@@ -6050,6 +7119,21 @@ function generateCourse(seed) {
     }
     idx++;
   }
+
+  /* ---- THE FIVE SCRIPTED MOMENTS, one placement each ----------------------
+     Anchored to real landmarks (the first TRÁFICO section, the boundary line,
+     the last turbo zone of the second half, the far end of the deck) so they
+     land where they mean something rather than at arbitrary distances.     */
+  momentPlan.push({ d: firstTrafficD ? Math.max(200, firstTrafficD - 30) : 560, kind: 'wave' });
+  momentPlan.push({ d: CFG.BOUNDARY_D - 250, kind: 'police' });
+  momentPlan.push({ d: CFG.BOUNDARY_D + 120, kind: 'birds' });
+  var windD = 0;
+  for (var ts = 0; ts < turboStarts.length; ts++) {
+    if (turboStarts[ts] > CFG.BOUNDARY_D + 260) { windD = turboStarts[ts] + 80; break; }
+  }
+  momentPlan.push({ d: windD || (CFG.BOUNDARY_D + 520), kind: 'wind' });
+  momentPlan.push({ d: CFG.DECK_END - 420, kind: 'heli' });
+  momentPlan.sort(function (a, b) { return a.d - b.d; });
 
   // ---- the three jumps: boost run-up, callout, coin arc, coin reward on landing
   for (var jj = 0; jj < JUMPS.length; jj++) {
@@ -6115,7 +7199,10 @@ function streamCourse(dist) {
     o.userData.halfW = def.halfW;
     o.userData.halfL = def.halfL;
     o.userData.near = false;
-    o.position.set(laneX(rec.lane) + (rec.xoff || 0), roadHeightAt(rec.d), -rec.d);
+    // the lane-centre X this piece belongs at; the traffic-wave moment sways
+    // rolling vehicles about it and must always be able to put them back
+    o.userData.baseX = laneX(rec.lane) + (rec.xoff || 0);
+    o.position.set(o.userData.baseX, roadHeightAt(rec.d), -rec.d);
     o.rotation.y = (rec.type === 'oil') ? Math.random() * 3.14 : 0;
     if (rec.type === 'drum' || rec.type === 'crates') o.rotation.y = Math.random() * 0.6 - 0.3;
     /* A SPOOL MAY NEVER BE YAWED far off square: its flange faces have to keep
@@ -6135,6 +7222,7 @@ function streamCourse(dist) {
     b.userData.d = brec.d;
     b.userData.lane = brec.lane;
     b.userData.used = false;
+    b.userData.chain = brec.chain ? 1 : 0;
     b.position.set(laneX(brec.lane), roadHeightAt(brec.d), -brec.d);
     b.rotation.x = roadSlopeAt(brec.d) * -1;
     activeBoosts.push(b);
@@ -6385,13 +7473,16 @@ function resumeAudio() {
 }
 function now() { return AC ? AC.currentTime : 0; }
 
+/* The engine is the main continuous read on how fast you are going, so the
+   pitch sweep is wide and the response is quick: an idle at 48 Hz opens out
+   to nearly 300 Hz flat out, and the filter follows it. */
 function setEngine(level, pitch) {
   if (!audioReady) return;
   var t = now();
-  engineGain.gain.setTargetAtTime(level * 0.10, t, 0.15);
-  engOsc.frequency.setTargetAtTime(52 + pitch * 155, t, 0.12);
-  engSub.frequency.setTargetAtTime(26 + pitch * 74, t, 0.12);
-  engineFilt.frequency.setTargetAtTime(420 + pitch * 1700, t, 0.2);
+  engineGain.gain.setTargetAtTime(level * 0.10, t, 0.12);
+  engOsc.frequency.setTargetAtTime(48 + pitch * 245, t, 0.07);
+  engSub.frequency.setTargetAtTime(24 + pitch * 118, t, 0.07);
+  engineFilt.frequency.setTargetAtTime(380 + pitch * 2600, t, 0.12);
 }
 function noiseBurst(dur, f0, f1, gain, type) {
   if (!audioReady) return;
@@ -6486,6 +7577,52 @@ var SFX = {
   },
   /* near miss: a short air-rush that pans past the player */
   near: function () { noiseBurst(0.24, 2600, 380, 0.13, 'bandpass'); },
+  /* a lamp post going past at speed: a very short high air-rush */
+  whoosh: function (v) {
+    var f = clamp(700 + (v || 40) * 22, 700, 3200);
+    noiseBurst(0.15, f, f * 0.22, 0.045, 'bandpass');
+  },
+  /* the scripted moments each get their own small sound */
+  farHonk: function () {            // the traffic wave: two distant horns
+    tone(311.13, 0.30, 'square', 0.055);
+    tone(392.00, 0.34, 'square', 0.045, null, 0.16);
+  },
+  birds: function () {              // the flock lifting off the river
+    noiseBurst(0.55, 3200, 900, 0.055, 'bandpass');
+    tone(1480, 0.09, 'triangle', 0.045, 1180, 0.06);
+    tone(1720, 0.08, 'triangle', 0.038, 1320, 0.24);
+    tone(1560, 0.09, 'triangle', 0.040, 1240, 0.41);
+  },
+  gust: function () {               // the crosswind
+    noiseBurst(1.35, 260, 1500, 0.14, 'bandpass');
+    noiseBurst(1.10, 900, 220, 0.09, 'lowpass');
+  },
+  siren: function () {              // the police escort's whoop
+    tone(660, 0.26, 'sine', 0.075, 1180, 0);
+    tone(660, 0.26, 'sine', 0.070, 1180, 0.30);
+    tone(880, 0.20, 'sine', 0.055, 560, 0.62);
+  },
+  heli: function () {               // a rotor thump: low saw with a tremolo
+    if (!audioReady) return;
+    var t = now(), d = 5.2;
+    var o = AC.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(58, t);
+    var lp = AC.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(300, t); lp.Q.value = 2.2;
+    var g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.075, t + 0.9);
+    g.gain.setValueAtTime(0.075, t + d - 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    // the chop: a fast tremolo on the gain
+    var lfo = AC.createOscillator(); lfo.type = 'square';
+    lfo.frequency.setValueAtTime(11.5, t);
+    var lg = AC.createGain(); lg.gain.setValueAtTime(0.038, t);
+    lfo.connect(lg); lg.connect(g.gain);
+    o.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); lfo.start(t);
+    o.stop(t + d + 0.1); lfo.stop(t + d + 0.1);
+  },
   buzzer: function () {
     musDuckNow(0.35);
     tone(148, 0.55, 'square', 0.15, 116);
@@ -7300,7 +8437,8 @@ var GAME = {
   speed: 0,
   lane: 1,
   laneFrom: 0, laneTo: 0, laneT: 1,
-  x: 0, prevX: 0, latVel: 0,
+  x: 0, prevX: 0, latVel: 0, xBase: 0, windX: 0, camRoll: 0,
+  boostChain: 0, bestChain: 0, lastChainAt: -99, nextWhoosh: 0, coinsHud: 0,
   y: 0, vy: 0, airborne: false, landed: false, pitch: 0, flightJump: null, landD: 0,
   launchSpeed: 0, zone: '',
   boostTime: 0, invuln: 0, slip: 0, slipPhase: 0, shake: 0,
@@ -7350,7 +8488,8 @@ function requestLane(dir) {
   if (GAME.slip > 0) { SFX.slip(); return; }        // no steering on an oil slick
   var target = clamp(GAME.lane + dir, 0, CFG.LANES - 1);
   if (target === GAME.lane && GAME.laneT >= 1) return;
-  GAME.laneFrom = GAME.x;
+  // from the STEERED position, never from the wind-displaced one
+  GAME.laneFrom = GAME.xBase;
   GAME.lane = target;
   GAME.laneTo = laneX(target);
   GAME.laneT = 0;
@@ -7469,11 +8608,11 @@ function launchJump(J) {
   /* Modest horizontal floor only - the arc does the work. The hero ramp keeps
      an upper clamp too, so arriving at 400 km/h cannot skip the van straight
      over the customs canopy. */
-  /* re-solved for the slower speed ladder: the hero ramp still needs a
-     horizontal floor to clear the water, but 56 was tuned against the old
-     46-unit cruise and now reads as a teleport. 48 clears the gap with the
-     same margin against a 36-unit cruise. */
-  GAME.speed = J.big ? clamp(GAME.speed, 48, 82) : Math.max(GAME.speed, CFG.V_CRUISE);
+  /* re-solved for the game-feel speed ladder (cruise 44, cap 86, boost 118):
+     the hero ramp keeps a horizontal FLOOR so a full-brake approach still
+     clears the water, and a CEILING so arriving on a chained boost cannot
+     skip the van straight over the customs canopy. */
+  GAME.speed = J.big ? clamp(GAME.speed, 52, 96) : Math.max(GAME.speed, CFG.V_CRUISE);
   GAME.launchSpeed = GAME.speed;
   var lp = launchParams(J, GAME.speed);
   GAME.vy = lp.vy;
@@ -7493,9 +8632,14 @@ function resetRun(newSeed) {
   GAME.lane = 1 + (Math.random() < 0.5 ? 0 : 1);
   GAME.x = laneX(GAME.lane);
   GAME.prevX = GAME.x;
+  GAME.xBase = GAME.x;
+  GAME.windX = 0;
+  GAME.camRoll = 0;
   GAME.laneFrom = GAME.laneTo = GAME.x;
   GAME.laneT = 1;
   GAME.latVel = 0;
+  GAME.boostChain = 0; GAME.bestChain = 0; GAME.lastChainAt = -99;
+  GAME.nextWhoosh = 40; GAME.coinsHud = 0;
   GAME.y = 0; GAME.vy = 0; GAME.airborne = false; GAME.landed = false; GAME.pitch = 0;
   GAME.landD = 0; GAME.flightJump = null; GAME.launchSpeed = 0; GAME.zone = '';
   GAME.boostTime = 0; GAME.invuln = 0; GAME.slip = 0; GAME.slipPhase = 0; GAME.shake = 0;
@@ -7515,9 +8659,14 @@ function resetRun(newSeed) {
 
   clearActive();
   clearParticles();
+  clearRings();
+  clearPopNumbers();
+  clearCoinFly();                 // no half-flown pickup icons survive a restart
   generateCourse(newSeed);
+  resetMoments();                 // every scripted set-piece back to un-fired
   resetCustoms();
   resetDriver();
+  resetVanDamage();               // doors shut, spilled boxes + paperwork gone
 
   van.position.set(GAME.x, 0, -GAME.dist);
   vanBody.rotation.set(0, 0, 0);
@@ -7526,7 +8675,8 @@ function resetRun(newSeed) {
 
   camera.position.set(GAME.x + 6, 5.2, -GAME.dist + 13);
   camLook.set(GAME.x, 2, -GAME.dist - 12);
-  camera.fov = 62;
+  camera.rotation.z = 0;
+  camera.fov = 60;
   camera.updateProjectionMatrix();
 
   // wipe the transient UI state too, or a stale callout/toast survives a restart
@@ -7702,7 +8852,9 @@ function showScreen(id) {
    driver's speech bubble. A new note that arrives when the column is full
    evicts the OLDEST one, so the newest information is always readable.
    --------------------------------------------------------------------------- */
-var NOTE_MAX = 2;
+/* three visible rows, not two: with turbo chains, ¡VIENTO! and the scripted
+   moments all reporting in, two rows evicted information the player wanted */
+var NOTE_MAX = 3;
 var noteLive = [];            // {el, t, dur, key}
 function noteHost() { return $('noteCol'); }
 function killNote(n, instant) {
@@ -7752,9 +8904,13 @@ function updateNotes(dt) {
   }
 }
 function callout(text, dur) { pushNote(text, 'big', '', dur || 1.4, 'banner'); }
-function toastCol(text, cls) { pushNote(text, 'mid', cls || 'orange', 0.9, 'toast'); }
+/* PUNCH. The scale-in is CSS (0.34 s of overshoot from scale .66); the note
+   then holds only long enough to read and gets out of the way, so a run that
+   fires a near-miss, a streak and a TURBO chain inside a second still reads
+   as three separate hits rather than one pile. */
+function toastCol(text, cls) { pushNote(text, 'mid', cls || 'orange', 0.8, 'toast'); }
 function toast(text) { toastCol(text, ''); }
-function nearPop(text) { pushNote(text, 'sm', '', 0.8, 'near'); }
+function nearPop(text) { pushNote(text, 'sm', '', 0.68, 'near'); }
 
 var hudCache = { s: -1, t: -1, h: -1, b: -1, p: -1, c: -1, m: -1 };
 var hudCoinShown = 0;              // the count-up ticker's displayed value
@@ -7777,12 +8933,12 @@ function updateHUD(force) {
   }
   if (force || GAME.hits !== hudCache.h) { hudCache.h = GAME.hits; $('hitsVal').textContent = GAME.hits; }
   if (force || GAME.boosts !== hudCache.b) { hudCache.b = GAME.boosts; $('boostsVal').textContent = GAME.boosts; }
-  /* coin count-up ticker: the number rolls to the real total instead of
-     snapping, which is most of what makes a pickup feel like a reward */
-  if (force) hudCoinShown = GAME.coins;
-  else if (hudCoinShown < GAME.coins) {
-    hudCoinShown = Math.min(GAME.coins, hudCoinShown + Math.max(1, Math.ceil((GAME.coins - hudCoinShown) * 0.34)));
-  } else if (hudCoinShown > GAME.coins) hudCoinShown = GAME.coins;
+  /* THE COIN COUNTER TICKS ON ARRIVAL. GAME.coins is the true count, used for
+     the score and the grade; GAME.coinsHud only goes up when a flying coin
+     icon actually lands in the box (see updateCoinFly), which is what makes
+     the pickup read as a delivery rather than as a number changing. */
+  if (force) { GAME.coinsHud = GAME.coins; }
+  hudCoinShown = GAME.coinsHud;
   if (force || hudCoinShown !== hudCache.c) { hudCache.c = hudCoinShown; $('coinVal').textContent = hudCoinShown; }
 
   // streak multiplier pill
@@ -7808,6 +8964,7 @@ function updateHUD(force) {
 
 /* ---------------- collisions ---------------- */
 var HIT_LOG = [];
+var CHAIN_WINDOW = 3.2;          // seconds a boost chain stays alive
 function hitObstacle(o) {
   try {
     if (HIT_LOG.length > 60) HIT_LOG.shift();
@@ -7845,6 +9002,7 @@ function hitObstacle(o) {
   el.style.opacity = '0.85';
   setTimeout(function () { el.style.opacity = '0'; }, 130);
   driverRage(1.5, HIT_PHRASES);          // he leans out and shakes his fist
+  vanDamageBurst();                      // doors fly open, cargo + paperwork out
 }
 
 /* ---------------------------------------------------------------------------
@@ -7907,6 +9065,21 @@ function updateObstacles(dt) {
       }
       o.position.z = -u.d;
       o.position.y = roadHeightAt(u.d);
+      /* THE TRAFFIC WAVE. Every rolling vehicle leans across together for a
+         couple of seconds. It is a sway of at most WAVE_AMP (1.45) inside the
+         vehicle's OWN lane, and a car's collision radius is halfW + 1.28 =
+         2.33 against a 4.4 lane pitch, so the shifted vehicle is still ~2.95
+         clear of the next lane centre: the proved corridor is untouched and
+         the only thing the sway can do is turn a pass into a near miss. */
+      var env = waveEnv();
+      if (env > 0.001) {
+        o.position.x = (u.baseX === undefined ? o.position.x : u.baseX) +
+                       Math.sin(WORLD_T * 1.25 + u.d0 * 0.028) * WAVE_AMP * env;
+        o.rotation.y = Math.cos(WORLD_T * 1.25 + u.d0 * 0.028) * 0.09 * env;
+      } else if (u.baseX !== undefined && o.position.x !== u.baseX) {
+        o.position.x = u.baseX;
+        o.rotation.y = 0;
+      }
       if (o.userData.wheels) {
         for (var w = 0; w < o.userData.wheels.length; w++) {
           o.userData.wheels[w].rotation.x -= (u.speed / 0.55) * dt;
@@ -7976,11 +9149,26 @@ function updateBoosts(dt) {
       b.visible = false;
       GAME.boosts++;
       GAME.speed = Math.min(CFG.V_BOOST_MAX, GAME.speed + CFG.BOOST_KICK);
-      GAME.boostTime = CFG.BOOST_TIME;
+      /* ---- BOOST CHAINS.
+         Only pads authored as part of a staggered chain (chain:1) count, so
+         the wall of pads on a jump run-up cannot inflate the multiplier. Each
+         further link in the chain extends the boost, which is what lets a
+         player who weaves well hold top speed for a whole ZONA TURBO.      */
+      var link = 1;
+      if (u.chain) {
+        if (WORLD_T - GAME.lastChainAt < CHAIN_WINDOW) GAME.boostChain++;
+        else GAME.boostChain = 1;
+        GAME.lastChainAt = WORLD_T;
+        link = GAME.boostChain;
+        if (link > GAME.bestChain) GAME.bestChain = link;
+      }
+      GAME.boostTime = CFG.BOOST_TIME + Math.min(2.4, (link - 1) * 0.7);
+      if (link >= 2) toastCol('¡TURBO x' + Math.min(link, 5) + '!', 'green');
       SFX.boost();
       fxBoost(b.position);
+      if (link >= 2) fxRing(b.position.x, b.position.y + 1.1, b.position.z, 0.34, 1.0, 5.0);
       var el = $('fx-boostflash');
-      el.style.opacity = '0.55';
+      el.style.opacity = link >= 2 ? '0.72' : '0.55';
       setTimeout(function () { el.style.opacity = '0'; }, 180);
     }
   }
@@ -8018,23 +9206,28 @@ function stepPlaying(dt) {
   if (GAME.airborne) enforceFlight();
   GAME.dist += GAME.speed * dt;
 
-  // ----- lateral (eased lane slide + oil slide)
+  /* ----- lateral (eased lane slide + oil slide + crosswind).
+     xBase is the STEERED position; the crosswind is a pure displacement laid
+     on top of it, so a gust never corrupts the lane interpolation and the
+     player keeps full steering authority through the whole 1.5 s. */
+  var bx;
   if (GAME.laneT < 1) {
     // steering IS allowed in mid-air, it is just slower and floatier
     var laneDur = GAME.airborne ? CFG.LANE_TIME_AIR : CFG.LANE_TIME;
     GAME.laneT = Math.min(1, GAME.laneT + dt / laneDur);
-    GAME.x = lerp(GAME.laneFrom, GAME.laneTo, easeInOutCubic(GAME.laneT));
+    bx = lerp(GAME.laneFrom, GAME.laneTo, easeInOutCubic(GAME.laneT));
   } else {
-    GAME.x = GAME.laneTo;
+    bx = GAME.laneTo;
   }
   if (GAME.slip > 0) {
     GAME.slip -= dt;
     GAME.slipPhase += dt * 7.5;
     var amp = clamp(GAME.slip / 0.85, 0, 1) * 1.25;
-    GAME.x += Math.sin(GAME.slipPhase) * amp;
+    bx += Math.sin(GAME.slipPhase) * amp;
     if (GAME.slip <= 0) { GAME.slip = 0; }
   }
-  GAME.x = clamp(GAME.x, laneX(0) - 1.1, laneX(CFG.LANES - 1) + 1.1);
+  GAME.xBase = clamp(bx, laneX(0) - 1.1, laneX(CFG.LANES - 1) + 1.1);
+  GAME.x = clamp(GAME.xBase + GAME.windX, laneX(0) - 1.7, laneX(CFG.LANES - 1) + 1.7);
   GAME.latVel = dt > 0 ? (GAME.x - GAME.prevX) / dt : 0;
   GAME.prevX = GAME.x;
 
@@ -8093,12 +9286,14 @@ function stepPlaying(dt) {
   if (!GAME.crossed && !GAME.airborne && GAME.dist >= CFG.FINISH_D - 40) arriveUSA();
 
   streamCourse(GAME.dist);
+  updateMoments(dt);
   updateObstacles(dt);
   updateBoosts(dt);
   updateCoins(dt);
   updatePickups(dt);
   updateWarns();
   GAME.noLines = Math.max(0, GAME.noLines - dt);
+  if (WORLD_T - GAME.lastChainAt > CHAIN_WINDOW) GAME.boostChain = 0;
 
   // ----- exhaust puffs when slow / after a hit
   GAME.elapsedSincePuff += dt;
@@ -8106,6 +9301,33 @@ function stepPlaying(dt) {
     GAME.elapsedSincePuff = 0;
     exhaustAnchor.getWorldPosition(tmpV);
     fxExhaust(tmpV, 1);
+  }
+  /* ----- ROAD-SIDE BLUR STREAKS.
+     Long thin quads thrown down each shoulder and torn past the camera at the
+     van's own speed. They only start above cruise and they scale with how far
+     over cruise you are, so they read as "this is fast" rather than as fog. */
+  var over = clamp((GAME.speed - CFG.V_CRUISE * 1.06) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
+  if (over > 0.02) {
+    var nSt = (IS_MOBILE ? 1 : 2);
+    for (var st = 0; st < nSt; st++) {
+      if (Math.random() > over * 0.85) continue;
+      var sSide = Math.random() < 0.5 ? -1 : 1;
+      emit({
+        x: sSide * (CFG.ROAD_HALF + 0.7 + Math.random() * 3.4),
+        y: GAME.y + 0.25 + Math.random() * 2.9,
+        z: -(GAME.dist + 30 + Math.random() * 46),
+        vx: 0, vy: 0, vz: GAME.speed * 0.92 + 8,
+        life: 0.30 + Math.random() * 0.16,
+        size: 0.09 + Math.random() * 0.09, aspect: 9 + Math.random() * 8,
+        color: Math.random() > 0.6 ? 0xffffff : 0xd8dde6
+      });
+    }
+  }
+  /* ----- lamp posts whooshing past. They stand every 90 units; above cruise
+     each one gets a very short air-rush tuned to the speed. */
+  if (GAME.dist >= GAME.nextWhoosh) {
+    while (GAME.nextWhoosh <= GAME.dist) GAME.nextWhoosh += 90;
+    if (GAME.speed > CFG.V_CRUISE * 1.12) SFX.whoosh(GAME.speed);
   }
   // ----- boost trail
   if (GAME.boostTime > 0 && Math.random() < (IS_MOBILE ? 0.5 : 0.85)) {
@@ -8193,6 +9415,7 @@ function stepFinished(dt) {
       if (Jf) { GAME.dist = Jf.land + 4; GAME.y = 0.6; GAME.vy = -2; }
       else { GAME.y = 0; GAME.vy = 0; }
     }
+    updateMoments(dt);
     updateObstacles(dt); updateBoosts(dt); updateCoins(dt); updatePickups(dt); updateWarns();
     return;
   }
@@ -8276,8 +9499,11 @@ function stepFinished(dt) {
     GAME.camPush = easeInOutCubic(clamp(GAME.camPushT / 1.5, 0, 1));
   }
 
+  GAME.windX = 0;                 // no gusts at the checkpoint
   GAME.x = damp(GAME.x, GAME.laneTo, 4, dt);
+  GAME.xBase = GAME.x;
   GAME.latVel = 0;
+  updateMoments(dt);              // let a heli / flock already in the air finish
   updateObstacles(dt);
   updateBoosts(dt);
   updateCoins(dt);
@@ -8326,6 +9552,7 @@ function updateVanVisual(dt) {
   vanShadow.material.opacity = hasGround(GAME.dist) ? airFade : 0;
 
   updateDriver(dt);
+  updateVanDoors(dt);
 }
 
 /* ---------------- camera ---------------- */
@@ -8337,8 +9564,13 @@ function updateCamera(dt) {
   // numbers plus the soft z-damping put it ~30 units away in mid-flight,
   // which turned the marquee jump into a distant speck.
   // airborne: the camera pulls back and up so the whole coin arc is on screen
-  var back = 11.0 + spdF * 2.5 + (GAME.airborne ? 2.9 : 0) + (portrait ? 4.2 : 0);
-  var up = 4.4 + spdF * 0.9 + (GAME.airborne ? 2.3 : 0) + (portrait ? 1.5 : 0);
+  /* SENSE OF SPEED. The chase camera used to pull BACK and UP as the van sped
+     up, which flattens everything out - the faster you go the less the world
+     moves in frame. It now does the opposite: height and distance interpolate
+     DOWN with speed, so at 118 the camera is sitting on the tarmac right
+     behind the bumper and the road tears past. */
+  var back = 12.2 - spdF * 2.9 + (GAME.airborne ? 3.4 : 0) + (portrait ? 4.2 : 0);
+  var up = 5.1 - spdF * 1.5 + (GAME.airborne ? 2.6 : 0) + (portrait ? 1.5 : 0);
   // a portrait phone is narrow: track the van's lane far more closely or the
   // outer lanes push it off the side of the screen
   var xFollow = portrait ? 0.88 : 0.62;
@@ -8374,10 +9606,17 @@ function updateCamera(dt) {
     camera.position.add(camShakeV);
   }
   camera.lookAt(camLook);
+  /* a subtle camera ROLL into a lane change - the single cheapest way to make
+     steering feel physical. Killed off during the customs push-in. */
+  GAME.camRoll = damp(GAME.camRoll, clamp(-GAME.latVel * 0.0085, -0.10, 0.10) * (1 - GAME.camPush), 9, dt);
+  camera.rotation.z += GAME.camRoll;
   if (GAME.shake > 0.001) camera.rotation.z += (Math.random() - 0.5) * GAME.shake * 0.035;
 
-  var fovBase = portrait ? 70 : 62;
-  var fovGoal = fovBase + spdF * 11 + (GAME.boostTime > 0 ? 9 : 0) + (GAME.airborne ? 3 : 0) - GAME.camPush * 12;
+  /* FOV opens up with speed: 60 at rest, 78 flat out on a boost. */
+  var fovBase = portrait ? 68 : 60;
+  var fovTop = portrait ? 86 : 78;
+  var fovGoal = clamp(fovBase + spdF * 13 + (GAME.boostTime > 0 ? 7 : 0) + (GAME.airborne ? 3 : 0),
+                      fovBase, fovTop) - GAME.camPush * 12;
   camera.fov = damp(camera.fov, fovGoal, 5, dt);
   camera.updateProjectionMatrix();
 }
@@ -8471,12 +9710,12 @@ function updateWorld(dt) {
 var speedEl = null;
 function updateSpeedFX(dt) {
   if (!speedEl) speedEl = $('fx-speed');
-  var over = clamp((GAME.speed - CFG.V_CRUISE * 1.1) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
-  var o = over * 0.42 + (GAME.boostTime > 0 ? 0.34 : 0);
+  var over = clamp((GAME.speed - CFG.V_CRUISE * 1.04) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
+  var o = Math.min(0.90, over * 0.62 + (GAME.boostTime > 0 ? 0.40 : 0));
   if (GAME.state !== 'PLAYING' && GAME.state !== 'FINISHED') o = 0;
   if (GAME.noLines > 0) o = 0;              // an impact kills the speed lines dead
   speedEl.style.opacity = o.toFixed(2);
-  var sc = 1 + o * 0.25;
+  var sc = 1 + o * 0.40;
   speedEl.style.transform = 'scale(' + sc.toFixed(3) + ')';
 }
 
@@ -8566,6 +9805,11 @@ function frame(dt, tAbs) {
 
   if (GAME.state !== 'PAUSED') {
     updateParticles(dt);
+    updateRings(dt);
+    updatePopNumbers(dt);
+    updateCoinFly(dt);
+    updateCargoBoxes(dt);
+    updatePapers(dt);
     updateWorld(dt);
   }
   updateSpeedFX(dt);
@@ -8573,8 +9817,10 @@ function frame(dt, tAbs) {
   if (GAME.state !== 'PAUSED') updateHUD(false);
 
   if (GAME.state === 'PLAYING' || GAME.state === 'FINISHED') {
-    var f = clamp(GAME.speed / CFG.V_MAX, 0, 1.4);
-    setEngine(0.55 + f * 0.45, f);
+    // pitch is tied to the WHOLE speed range, idle to boost ceiling, so the
+    // engine note is a readable instrument rather than a background hum
+    var f = clamp((GAME.speed - CFG.V_MIN) / (CFG.V_BOOST_MAX - CFG.V_MIN), 0, 1);
+    setEngine(0.50 + f * 0.50, f);
   } else if (GAME.state === 'TITLE') {
     setEngine(0.35, 0.07 + Math.sin(t * 2.2) * 0.02);
   }
@@ -8621,6 +9867,15 @@ function debugTeleport(d) {
   pickupCursor = planIndexAt(pickupPlan, back);
   warnCursor = planIndexAt(warnPlan, back);
   sectionCursor = planIndexAt(sectionPlan, d);
+  /* a teleport must not fire every scripted moment it skipped past all at
+     once: mark them consumed and stop whatever was mid-play */
+  momentCursor = planIndexAt(momentPlan, d);
+  MOMENT.wave = MOMENT.birds = MOMENT.wind = MOMENT.police = MOMENT.heli = -1;
+  GAME.windX = 0;
+  if (birdFlock) birdFlock.visible = false;
+  if (policeTruck) policeTruck.visible = false;
+  if (heliRig) heliRig.visible = false;
+  GAME.nextWhoosh = Math.ceil((d - 40) / 90) * 90 + 40;
   streamCourse(GAME.dist);
   van.position.set(GAME.x, GAME.y, -GAME.dist);
   camera.position.set(GAME.x, GAME.y + 5.2, -GAME.dist + 13);
@@ -8675,6 +9930,10 @@ function boot() {
   initObstacles();
   initCoins();
   initParticles();
+  // the scripted set-pieces are built once, hidden, and simply switched on
+  buildBirds();
+  buildPolice();
+  buildHeli();
 
   if (IS_TOUCH) document.body.className = (document.body.className + ' touch').trim();
   document.documentElement.style.setProperty('--hs', hudScale().toFixed(3));
@@ -8732,9 +9991,38 @@ function boot() {
         return { obstacles: activeObs.length, boosts: activeBoosts.length,
                  coins: activeCoins.length, particles: partLive.length,
                  pickups: activePickups.length, warns: activeWarns.length,
+                 boxes: cargoLive.length, papers: paperLive.length,
+                 rings: ringLive.length, pops: popLive.length, fly: coinFlyLive.length,
                  planned: { o: obstaclePlan.length, b: boostPlan.length, c: coinPlan.length,
-                            p: pickupPlan.length, w: warnPlan.length } };
+                            p: pickupPlan.length, w: warnPlan.length, m: momentPlan.length } };
       },
+      /* the coin-pickup FX: none of these may survive a restart */
+      get pickupFx() {
+        return { fly: coinFlyLive.length, pops: popLive.length, rings: ringLive.length,
+                 coins: GAME.coins, coinsHud: GAME.coinsHud,
+                 flyPool: coinFlyPool.length };
+      },
+      /* the cargo hold behind the rear doors: a static, always-built interior */
+      get interior() {
+        return { built: !!cargoHold, parts: cargoHold ? cargoHold.children.length : 0,
+                 apertureX: HOLD_AP_X, apertureY0: HOLD_AP_Y0, apertureY1: HOLD_AP_Y1,
+                 bodyDepth: BODY_D };
+      },
+      /* the five scripted moments: which have fired, which are running */
+      get moments() {
+        return { fired: { wave: MOMENT.fired.wave, birds: MOMENT.fired.birds,
+                          wind: MOMENT.fired.wind, police: MOMENT.fired.police,
+                          heli: MOMENT.fired.heli },
+                 firedCount: momentsFired(),
+                 live: { wave: MOMENT.wave, birds: MOMENT.birds, wind: MOMENT.wind,
+                         police: MOMENT.police, heli: MOMENT.heli },
+                 windX: +GAME.windX.toFixed(3),
+                 plan: momentPlan.map(function (m) { return { kind: m.kind, d: Math.round(m.d) }; }) };
+      },
+      get boostChain() { return GAME.boostChain; },
+      get bestChain() { return GAME.bestChain; },
+      get fov() { return +camera.fov.toFixed(2); },
+      get camRoll() { return +GAME.camRoll.toFixed(4); },
       /* --- pacing / readability / fun instrumentation --- */
       get streak() { return GAME.streak; },
       get bestStreak() { return GAME.bestStreak; },
@@ -8791,6 +10079,17 @@ function boot() {
           }
         }
         return out;
+      },
+      /* impact damage state: the rear doors, the spilled cargo and the
+         paperwork out of the passenger window. A restart must zero all three. */
+      get damage() {
+        return {
+          doorT: VANDOOR.t,
+          doorL: rearDoorL ? +rearDoorL.rotation.y.toFixed(3) : 0,
+          doorR: rearDoorR ? +rearDoorR.rotation.y.toFixed(3) : 0,
+          boxes: cargoLive.length, papers: paperLive.length,
+          boxPool: cargoPool.length, paperPool: paperPool.length
+        };
       },
       get touch() { return IS_TOUCH; },
       get mobile() { return IS_MOBILE; },
