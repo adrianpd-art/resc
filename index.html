@@ -432,6 +432,31 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
   body.touch #speedBox{left:calc(20px + min(28vw,150px))}
   body.touch #boostBox{right:calc(20px + min(28vw,150px))}
 }
+
+/* ---------- TRAFFIC-JAM INTERLUDE ----------------------------------------
+   The short black CUT between the chase camera and the first-person cab. It
+   is driven frame by frame from JS (never a CSS transition) so it stays in
+   step with a headless harness stepping the sim by hand. */
+#jamFade{position:fixed;inset:0;z-index:18;background:#05070c;opacity:0;display:none;pointer-events:none}
+#jamFade.on{display:block}
+/* The two extra thumb buttons the phone mini-game needs. They live in the
+   same #touch layer as the lane buttons and only appear while the phone view
+   is up, in a row ABOVE the lane buttons, so nothing overlaps the phone or
+   the existing controls. No vh anywhere. */
+#tRot,#tDrop{
+  display:none;
+  bottom:calc(26px + min(26vw,138px) + env(safe-area-inset-bottom,0px));
+  width:min(30vw,152px);height:min(13vw,62px);border-radius:16px;
+  font-size:min(4.2vw,19px);letter-spacing:1px;
+}
+#tRot{left:calc(14px + env(safe-area-inset-left,0px))}
+#tDrop{right:calc(14px + env(safe-area-inset-right,0px))}
+#touch.jam #tRot,#touch.jam #tDrop{display:flex}
+#touch.jam #tHonk{display:none}
+/* the RESCO BLOCKS line on the results card: only there if it was played */
+#rTetRow{display:none}
+#rTetRow.on{display:flex}
+#rTetRow b{color:var(--blue-d)}
 </style>
 </head>
 <body>
@@ -496,7 +521,13 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
   <button class="tbtn" id="tLeft" type="button" aria-label="Carril izquierdo">&#9664;</button>
   <button class="tbtn" id="tHonk" type="button" aria-label="Bocina">BOCINA</button>
   <button class="tbtn" id="tRight" type="button" aria-label="Carril derecho">&#9654;</button>
+  <!-- only visible during the RESCO BLOCKS phone interlude -->
+  <button class="tbtn" id="tRot" type="button" aria-label="Girar pieza">ROTAR</button>
+  <button class="tbtn" id="tDrop" type="button" aria-label="Soltar pieza">CAER</button>
 </div>
+
+<!-- ============ JAM CUT ============ -->
+<div id="jamFade"></div>
 
 <!-- ============ TITLE ============ -->
 <div class="screen on" id="scrTitle">
@@ -555,6 +586,7 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
       <div class="rrow"><span>TURBOS</span><b id="rBoosts">0</b></div>
       <div class="rrow"><span>GOLPES</span><b id="rHits">0</b></div>
       <div class="rrow"><span>ESQUIVADOS</span><b id="rDodge">0</b></div>
+      <div class="rrow" id="rTetRow"><span id="rTetLbl">RESCO BLOCKS</span><b id="rTet">+0</b></div>
       <div class="rrow hi"><span>PUNTOS</span><b id="rScore">0</b></div>
     </div>
     <div id="bestLine">MEJOR: <span id="rBest">--</span></div>
@@ -605,6 +637,18 @@ try {
              (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 } catch (e0) { IS_TOUCH = false; }
 var IS_MOBILE = IS_TOUCH && Math.min(window.innerWidth, window.innerHeight) < 950;
+
+/* ---------------- traffic-jam interlude: URL test hooks ----------------
+   ?jam=1 forces the interlude from the next run on (so a tester can keep
+   restarting into it); ?jam=0 disables it outright whatever CFG.JAM_MODE
+   says. Neither is ever set by the game. */
+var JAM_URL = 0;
+try {
+  var _jq = '' + (window.location.search || '');
+  if (/[?&]jam=1(?:&|$)/.test(_jq)) JAM_URL = 1;
+  else if (/[?&]jam=0(?:&|$)/.test(_jq)) JAM_URL = -1;
+} catch (eJ) { JAM_URL = 0; }
+var jamForceNext = false;         // one-shot, set by __RR.forceJam()
 
 /* ================================================================
    1. CONFIG / CONSTANTS
@@ -682,7 +726,16 @@ var CFG = {
   SPAWN_AHEAD:   300,
   DESPAWN_BEHIND: 45,
   FOG_NEAR:      170,
-  FOG_FAR:       860
+  FOG_FAR:       860,
+
+  /* --- THE TRAFFIC-JAM INTERLUDE ------------------------------------------
+     ONE toggle: JAM_MODE false and the whole feature does not exist. The run
+     counter lives in localStorage 'rr_runs' and counts runs that have
+     STARTED, so quitting a run still spends it. Runs 1 and 2 are normal, run
+     3 gets the jam and the counter resets - so run 6 gets it again. */
+  JAM_MODE: true,
+  JAM_EVERY_N_RUNS: 3,
+  JAM_ROWS_TO_CLEAR: 5
 };
 CFG.RAMP_TOP  = CFG.DECK_END + CFG.RAMP_LEN;              // 4800
 CFG.PLAZA_D0  = CFG.RAMP_TOP + CFG.GAP;                   // 4846  (touchdown, on LAND)
@@ -3421,6 +3474,14 @@ function makeOfficer(uniform, prop) {
    ================================================================ */
 var van, vanBody, wheels = [], VAN_OUTLINE, vanShadow, exhaustAnchor;
 var rearDoorL = null, rearDoorR = null;
+/* the cab glass, kept as a reference so the first-person view can take it out
+   of the way and look through the aperture at the real scene.
+   vanBodyHull is the single inverted-hull box that draws the van's silhouette
+   stroke. An inverted hull is a BackSide box: from OUTSIDE it is a thin ink
+   line, but the first-person eye point sits INSIDE it, and from in there every
+   one of its faces is back-facing, i.e. drawn - a dark wall a few centimetres
+   from the camera. So it comes off with the windshield. */
+var vanWindshield = null, vanWsRef = null, vanBodyHull = null;
 var cargoHold = null;
 /* the coin-absorb rim glow: a wider additive-gold inverted hull over the van's
    silhouette, off except for ~0.25 s after every coin (see buildVan) */
@@ -3450,6 +3511,122 @@ function resetVanGold() {
   if (VAN_GOLD_MAT) VAN_GOLD_MAT.opacity = 0;
   if (VAN_GOLD_MAT2) VAN_GOLD_MAT2.opacity = 0;
   if (vanGoldShell) vanGoldShell.visible = false;
+}
+
+/* ---------------------------------------------------------------------------
+   6a. THE MUFFLER FLAMES
+   The van now carries TWO chrome tailpipes, one in each rear bottom corner,
+   and while the turbo is lit each one throws a jet of fire.
+
+   The jet is three nested cones, exactly the way the rest of the game is
+   drawn - flat colour, hard edges, one dark stroke:
+     outer   orange, with an inverted-hull ink stroke one size up
+     core    yellow-white, unlit, two thirds the length
+     collar  blue, at the pipe mouth, where the burn is hottest
+   Length is FLAME.len (the boost envelope) times a 20 Hz hash in 0.8 - 1.4,
+   so it flickers rather than pulses smoothly, and FLAME.len scales with the
+   boost chain, so a TURBO x3 visibly throws a longer flame than one pad. The
+   whole jet is tilted a little upward, the way an exhaust plume curls.
+   A boost START gets a backfire pop; the END gets a puff of grey smoke and a
+   handful of embers out of each pipe, and the cones scale cleanly to nothing.
+   MOBILE builds ONE layer: the outer cone and its stroke, nothing else.
+   --------------------------------------------------------------------------- */
+var flameRigs = [];
+var FLAME = { on: false, t: 0, len: 0 };
+var FLAME_LEN = 2.55;              // world units of flame at a full x3 chain
+
+function makeFlameJet() {
+  var g = new THREE.Group();
+  /* ConeGeometry points up +Y; rotating +90 deg about X sends the apex to +Z,
+     which is the van's REAR. position.z = h/2 then puts the base at z = 0, so
+     scaling the group on Z grows the flame straight out of the pipe. */
+  var outer = new THREE.Mesh(new THREE.ConeGeometry(0.21, 1.0, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff7a12, fog: false }));
+  outer.rotation.x = Math.PI / 2;
+  outer.position.z = 0.5;
+  outer.userData.noOutline = true;
+  var hull = new THREE.Mesh(new THREE.ConeGeometry(0.265, 1.10, 8), outlineMat(COL.ink));
+  hull.rotation.x = Math.PI / 2;
+  hull.position.z = 0.5;
+  hull.renderOrder = -1;
+  hull.userData.noOutline = true;
+  g.add(hull);
+  g.add(outer);
+  if (!IS_MOBILE) {
+    var core = new THREE.Mesh(new THREE.ConeGeometry(0.108, 0.66, 7),
+      new THREE.MeshBasicMaterial({ color: 0xfff3b4, fog: false }));
+    core.rotation.x = Math.PI / 2;
+    core.position.z = 0.33;
+    core.userData.noOutline = true;
+    g.add(core);
+    var collar = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.30, 7),
+      new THREE.MeshBasicMaterial({ color: 0x5ab7ff, fog: false }));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.z = 0.15;
+    collar.userData.noOutline = true;
+    g.add(collar);
+  }
+  g.visible = false;
+  g.scale.set(1, 1, 0.001);
+  return g;
+}
+/* a cheap deterministic hash, so the two pipes flicker out of step */
+function flameHash(i, n) {
+  var s = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+function updateBoostFlames(dt) {
+  if (!flameRigs.length) return;
+  var live = GAME.state === 'PLAYING' && GAME.boostTime > 0;
+  var i, q;
+  if (live && !FLAME.on) {
+    FLAME.on = true;
+    SFX.backfire();
+  } else if (!live && FLAME.on) {
+    FLAME.on = false;
+    for (q = 0; q < flameRigs.length; q++) {
+      flameRigs[q].getWorldPosition(tmpV);
+      fxSmoke(tmpV, IS_MOBILE ? 2 : 4);
+      for (var e = 0; e < (IS_MOBILE ? 3 : 6); e++) {
+        emit({
+          x: tmpV.x + (Math.random() - 0.5) * 0.34, y: tmpV.y + Math.random() * 0.32, z: tmpV.z,
+          vx: (Math.random() - 0.5) * 2.6, vy: 0.8 + Math.random() * 2.2, vz: 5 + Math.random() * 7,
+          life: 0.32 + Math.random() * 0.3, size: 0.08 + Math.random() * 0.08,
+          color: Math.random() > 0.5 ? 0xffc23c : 0xff6a1e, grav: 6
+        });
+      }
+    }
+  }
+  var chain = clamp(GAME.boostChain || 1, 1, 3);
+  var want = live ? (0.60 + (chain - 1) * 0.32) : 0;
+  FLAME.len = damp(FLAME.len, want, live ? 26 : 22, dt);
+  if (FLAME.len < 0.02) {
+    FLAME.len = 0;
+    for (i = 0; i < flameRigs.length; i++) {
+      if (flameRigs[i].visible) { flameRigs[i].visible = false; flameRigs[i].scale.set(1, 1, 0.001); }
+    }
+    return;
+  }
+  FLAME.t += dt;
+  var n = Math.floor(FLAME.t * 20);          // ~20 Hz flicker
+  for (i = 0; i < flameRigs.length; i++) {
+    var jet = flameRigs[i];
+    jet.visible = true;
+    var f = 0.8 + flameHash(i + 1, n) * 0.6;             // 0.8 - 1.4x
+    var w = 1 + (f - 1) * 0.35;
+    jet.scale.set(w, w, FLAME.len * FLAME_LEN * f);
+    // the plume curls UP a little as it leaves the pipe
+    jet.rotation.x = -0.20 - FLAME.len * 0.07 + Math.sin(FLAME.t * 9 + i) * 0.03;
+    jet.rotation.y = Math.sin(FLAME.t * 7.3 + i * 2.1) * 0.05;
+  }
+}
+function resetBoostFlames() {
+  FLAME.on = false; FLAME.t = 0; FLAME.len = 0;
+  for (var i = 0; i < flameRigs.length; i++) {
+    flameRigs[i].visible = false;
+    flameRigs[i].scale.set(1, 1, 0.001);
+    flameRigs[i].rotation.set(0, 0, 0);
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -3638,6 +3815,7 @@ function buildVan() {
   bodyHull.renderOrder = -1;
   bodyHull.userData.isOutline = true;
   vanBody.add(bodyHull);
+  vanBodyHull = bodyHull;
 
   buildCargoHold(vanBody);
   // roof cap: light grey trim, no brand colour on the bodywork
@@ -3662,11 +3840,13 @@ function buildVan() {
   var ws = box(2.34, 1.42, 0.24, wsMat, 0, 2.42, -1.60);
   ws.rotation.x = -0.30;
   vanBody.add(ws);
+  vanWindshield = ws;                 // hidden for the first-person cab view
   // reflection stripe on the glass
   var wsRef = box(2.10, 0.20, 0.10, toon(0x9fc6ff), 0, 2.62, -1.72);
   wsRef.rotation.x = -0.30;
   wsRef.userData.noOutline = true;
   vanBody.add(wsRef);
+  vanWsRef = wsRef;
   // A-pillars
   for (var s = -1; s <= 1; s += 2) {
     var pil = box(0.20, 1.55, 0.30, white, s * 1.20, 2.42, -1.58);
@@ -3796,10 +3976,21 @@ function buildVan() {
   }
   var rBump = box(2.70, 0.50, 0.50, trimD, 0, 0.86, 3.18);
   vanBody.add(rBump);
-  // exhaust
-  var pipe = cyl(0.11, 0.11, 0.5, 8, dark, 0.85, 0.42, 3.22);
-  pipe.rotation.x = Math.PI / 2;
-  vanBody.add(pipe);
+  /* ---- TWO exhaust tailpipes, one in each rear bottom corner, in chrome
+     grey, each with a flame jet parked at its mouth (see makeFlameJet). */
+  var chromeM = toon(0xbcc3cc), chromeD = toon(0x8f979f);
+  for (var px2 = -1; px2 <= 1; px2 += 2) {
+    var pipe = cyl(0.125, 0.125, 0.66, 10, chromeM, px2 * 0.86, 0.44, 3.24);
+    pipe.rotation.x = Math.PI / 2;
+    vanBody.add(pipe);
+    var pipeTip = cyl(0.165, 0.165, 0.14, 10, chromeD, px2 * 0.86, 0.44, 3.57);
+    pipeTip.rotation.x = Math.PI / 2;
+    vanBody.add(pipeTip);
+    var jet = makeFlameJet();
+    jet.position.set(px2 * 0.86, 0.44, 3.60);
+    vanBody.add(jet);
+    flameRigs.push(jet);
+  }
 
   /* ---- livery decals (drawn textures, no outline so they stay crisp) ---- */
   var sideMat = basic(0xffffff, { map: SIDE_TEX_R });
@@ -4255,6 +4446,44 @@ function buildDriver() {
 var BUBBLE_W = 3.5, BUBBLE_H = 1.75;
 var BUBBLE_SIDE = 0;                       // -1 left of him, +1 right of him
 var _bAnchor = null, _bRight = null, _bUp = null, _bFwd = null, _bProj = null;
+
+/* --- KEEP THE BALLOON OFF THE HUD ----------------------------------------
+   The customs push-in swings the camera round to the driver's side, which
+   puts his head in the top-left of the frame - exactly where the TIEMPO /
+   MONEDAS / MÚSICA boxes live - so the balloon used to land on top of the
+   coin counter. The HUD panels are ordinary fixed DOM rectangles: measure
+   them once (again on resize, or whenever the HUD is shown or hidden),
+   convert to NDC, and push the balloon clear of any it overlaps - down first,
+   sideways if there is no room underneath.                                */
+var HUD_RECTS = null, HUD_RECTS_CLS = ' ', HUD_RECTS_W = 0, HUD_RECTS_H = 0;
+function invalidateHudRects() { HUD_RECTS = null; }
+function hudRectsNDC() {
+  var hud = $('hud');
+  var cls = hud ? hud.className : '';
+  var W = window.innerWidth || 1, H = window.innerHeight || 1;
+  if (HUD_RECTS && cls === HUD_RECTS_CLS && W === HUD_RECTS_W && H === HUD_RECTS_H) return HUD_RECTS;
+  HUD_RECTS_CLS = cls; HUD_RECTS_W = W; HUD_RECTS_H = H;
+  var out = [];
+  if (hud && cls.indexOf('on') >= 0) {
+    var ids = ['timerBox', 'coinBox', 'musBox', 'hitsBox', 'progWrap'];
+    for (var i = 0; i < ids.length; i++) {
+      var el = $(ids[i]);
+      if (!el) continue;
+      var r = null;
+      try { r = el.getBoundingClientRect(); } catch (e) { r = null; }
+      if (!r || !(r.width > 0) || !(r.height > 0)) continue;
+      var pad = 10;                       // a little breathing room per panel
+      out.push({
+        x0: ((r.left - pad) / W) * 2 - 1,
+        x1: ((r.right + pad) / W) * 2 - 1,
+        y0: 1 - ((r.bottom + pad) / H) * 2,     // NDC y is up
+        y1: 1 - ((r.top - pad) / H) * 2
+      });
+    }
+  }
+  HUD_RECTS = out;
+  return out;
+}
 function bubbleTail(side) { return side < 0; }   // balloon left -> tail right
 function setBubblePhrase(phrase, side) {
   if (!bubbleMat) return;
@@ -4263,7 +4492,8 @@ function setBubblePhrase(phrase, side) {
 }
 function updateBubble(leanT) {
   if (!bubbleMesh || !driverHead) return;
-  var want = DRV.active && leanT > 0.25;
+  // never over the first-person cab: there is no balloon inside your own head
+  var want = DRV.active && leanT > 0.25 && !JAM.fp;
   bubbleMesh.visible = want;
   if (!want) return;
   if (!_bAnchor) {
@@ -4296,6 +4526,28 @@ function updateBubble(leanT) {
   var cy = _bProj.y + fracH + 0.09 + Math.sin(WORLD_T * 6) * 0.012;
   cx = clamp(cx, -0.97 + fracW, 0.97 - fracW);
   cy = clamp(cy, -0.97 + fracH, 0.97 - fracH);
+
+  /* now push it clear of the HUD panels. Six passes at most: each one either
+     drops the balloon under a panel or slides it past one, and both moves are
+     bounded, so it always settles. */
+  var rects = hudRectsNDC();
+  if (rects.length) {
+    for (var pass = 0; pass < 6; pass++) {
+      var moved = false;
+      for (var ri = 0; ri < rects.length; ri++) {
+        var R = rects[ri];
+        if (cx + fracW <= R.x0 || cx - fracW >= R.x1) continue;
+        if (cy - fracH >= R.y1 || cy + fracH <= R.y0) continue;
+        var below = R.y0 - fracH - 0.02;
+        if (below >= -0.97 + fracH) { cy = below; moved = true; continue; }
+        var toL = R.x0 - fracW - 0.02, toR = R.x1 + fracW + 0.02;
+        if (toR <= 0.97 - fracW) { cx = toR; moved = true; }
+        else if (toL >= -0.97 + fracW) { cx = toL; moved = true; }
+        else { cy = clamp(below, -0.97 + fracH, 0.97 - fracH); moved = true; }
+      }
+      if (!moved) break;
+    }
+  }
   // the clamp may have pushed the balloon past him: re-pick the tail side so
   // it is always the edge that faces the driver
   var finalSide = (cx >= _bProj.x) ? 1 : -1;
@@ -4395,7 +4647,12 @@ function updateDriver(dt) {
   driverArm.rotation.z = damp(driverArm.rotation.z, ztarget, 16, dt);
   driverArm.rotation.x = damp(driverArm.rotation.x, target, 20, dt);
   driverForearm.rotation.x = damp(driverForearm.rotation.x, ftarget, 20, dt);
-  driverArmInner.rotation.x = damp(driverArmInner.rotation.x, -0.55, 12, dt);
+  /* THE WHEEL SLAP. During the traffic jam he thumps the steering wheel with
+     the inner (wheel) arm - two quick strokes on top of whatever else the rig
+     is doing. JAM.slapT is the only thing that drives it. */
+  var innerT = -0.55;
+  if (JAM.slapT > 0) innerT = -0.55 + Math.abs(Math.sin(JAM.slapT * 17)) * 0.60;
+  driverArmInner.rotation.x = damp(driverArmInner.rotation.x, innerT, JAM.slapT > 0 ? 26 : 12, dt);
 
   // the bubble is anchored to his head, tail pointing at him
   updateBubble(leanT);
@@ -4635,6 +4892,1048 @@ function resetVanDamage() {
   resetVanDoors();
   clearCargo();
   clearPapers();
+}
+
+/* ================================================================
+   6e. THE FIRST-PERSON CAB
+   Everything you see from the driver's seat during the traffic-jam
+   interlude, in two groups, both children of vanBody and both invisible
+   until jamSetFp(true) switches them on:
+
+     fpCabRig    the cab itself - dashboard, binnacle and its two dials, the
+                 top of the steering wheel, the sun visor, the rear-view
+                 mirror and a rosary swinging off it.
+     fpHandRig   the driver's two hands and the phone, parented to the EYE
+                 POINT rather than to the van, so they hold their framing
+                 whatever the aspect ratio is (fpLayout re-sizes them every
+                 frame from the camera's own frustum, the way the speech
+                 balloon does). The rig breathes by a degree or two; the
+                 phone screen itself stays level and readable.
+
+   The windshield glass is a solid toon box, so it is simply switched off
+   while the view is up: what you look through the aperture at is the real
+   scene - the jam, the deck, the bridge ahead - still being rendered.
+   ================================================================ */
+var fpCamAnchor = null, fpCabRig = null, fpHandRig = null,
+    fpScreenMesh = null, fpThumbL = null, fpThumbR = null, fpRosary = null;
+var FP = { t: 0, thumbL: 0, thumbR: 0 };
+var FP_SCREEN_W = 0.60, FP_SCREEN_H = 0.3375;      // 16:9, unscaled
+var FP_DIST = 0.70;                                // eye to phone, world units
+
+function fpHand(side) {
+  var g = new THREE.Group();
+  var skin = toon(COL.skin), skinD = toon(COL.skinD), cuff = toon(0xC0392B);
+  // palm, wrapped round the end of the phone
+  var palm = box(0.17, 0.23, 0.20, skin, side * 0.02, -0.04, -0.03);
+  g.add(palm);
+  // four fingers curled round the BACK of the handset
+  for (var f = 0; f < 4; f++) {
+    var fin = box(0.135, 0.048, 0.075, skin, side * 0.005, 0.055 - f * 0.045, -0.115);
+    fin.userData.noOutline = true;
+    g.add(fin);
+    var kn = box(0.05, 0.042, 0.05, skinD, side * -0.045, 0.055 - f * 0.045, -0.088);
+    kn.userData.noOutline = true;
+    g.add(kn);
+  }
+  // two fingertips curling over the TOP edge of the handset, which is what
+  // makes a landscape grip read as a grip rather than as a block
+  for (var ft = 0; ft < 2; ft++) {
+    var tip = box(0.055, 0.05, 0.115, skin, side * (-0.03 - ft * 0.065), 0.105, 0.005);
+    tip.rotation.x = 0.30;
+    g.add(tip);
+  }
+  // the thumb, resting on the front face beside the screen
+  var thumb = new THREE.Group();
+  thumb.position.set(side * -0.055, 0.03, 0.045);
+  var tb = box(0.062, 0.155, 0.06, skin, 0, -0.065, 0.02);
+  thumb.add(tb);
+  var tt = box(0.068, 0.06, 0.06, skinD, 0, -0.145, 0.032);
+  tt.userData.noOutline = true;
+  thumb.add(tt);
+  thumb.rotation.x = -0.35;
+  thumb.rotation.z = side * 0.22;
+  g.add(thumb);
+  // wrist + forearm, running down out of frame
+  var wrist = box(0.15, 0.13, 0.16, skin, side * 0.05, -0.19, -0.02);
+  g.add(wrist);
+  var sleeve = box(0.185, 0.10, 0.19, cuff, side * 0.075, -0.28, -0.02);
+  g.add(sleeve);
+  var arm = box(0.175, 0.44, 0.18, cuff, side * 0.13, -0.50, -0.03);
+  arm.rotation.z = side * -0.20;
+  g.add(arm);
+  g.userData.thumb = thumb;
+  return g;
+}
+
+function buildFirstPerson() {
+  var dashM = toon(0x3a4049), dashD = toon(0x2a2f37), trimM = toon(0x666d77);
+
+  /* the eye point: the driver's seat, pitched a touch down at the phone */
+  fpCamAnchor = new THREE.Object3D();
+  fpCamAnchor.position.set(-0.72, 2.52, -1.06);
+  fpCamAnchor.rotation.set(-0.085, 0, 0);
+  vanBody.add(fpCamAnchor);
+
+  /* ---------------- the cab ---------------- */
+  fpCabRig = new THREE.Group();
+  fpCabRig.visible = false;
+  vanBody.add(fpCabRig);
+
+  /* EVERYTHING IN HERE LIVES BEYOND THE HANDSET.
+     The phone is held FP_DIST (0.70) in front of the eye point at van-local
+     z -1.06, i.e. at z = -1.76. Any cab part nearer than that would be drawn
+     over the screen, which is exactly wrong - your own hands are between you
+     and the dashboard. So the dash, the wheel and the binnacle all start at
+     z <= -1.95 and are stacked so the wheel's top arc and the instrument tops
+     read ABOVE the handset while the dash fills in below and beside it. */
+  var dash = box(2.30, 0.66, 0.90, dashM, 0, 1.85, -2.42);
+  fpCabRig.add(dash);
+  var dashTop = box(2.32, 0.07, 0.94, trimM, 0, 2.20, -2.42);
+  dashTop.userData.noOutline = true;
+  fpCabRig.add(dashTop);
+  var glove = box(0.66, 0.24, 0.04, dashD, 0.62, 1.90, -1.955);
+  glove.userData.noOutline = true;
+  fpCabRig.add(glove);
+  // instrument binnacle, tall enough to clear the wheel rim
+  var binn = box(0.54, 0.24, 0.38, dashD, -0.72, 2.24, -2.28);
+  fpCabRig.add(binn);
+  for (var dz = -1; dz <= 1; dz += 2) {
+    var dial = cyl(0.062, 0.062, 0.04, 10, basic(0x1a1f27), -0.72 + dz * 0.105, 2.28, -2.09);
+    dial.rotation.x = Math.PI / 2;
+    fpCabRig.add(dial);
+    var dialFace = cyl(0.048, 0.048, 0.04, 10, basic(0xd6dae0), -0.72 + dz * 0.105, 2.28, -2.082);
+    dialFace.rotation.x = Math.PI / 2;
+    dialFace.userData.noOutline = true;
+    fpCabRig.add(dialFace);
+    var needle = box(0.012, 0.055, 0.02, basic(0xd8342c), -0.72 + dz * 0.105, 2.298, -2.072);
+    needle.rotation.z = dz * 0.55;
+    needle.userData.noOutline = true;
+    fpCabRig.add(needle);
+  }
+  // the wheel: only its upper arc clears the top edge of the handset
+  var fpWheel = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.048, 6, 16), toon(0x23272e));
+  fpWheel.position.set(-0.72, 1.98, -1.99);
+  fpWheel.rotation.x = 1.16;
+  fpCabRig.add(fpWheel);
+  var wSpoke = box(0.46, 0.05, 0.05, toon(0x3a3f48), -0.72, 1.98, -1.99);
+  wSpoke.userData.noOutline = true;
+  fpCabRig.add(wSpoke);
+  // sun visor, folded up against the header rail
+  var visor = box(0.84, 0.05, 0.30, toon(0x9aa0a6), -0.66, 2.86, -1.98);
+  visor.rotation.x = 0.26;
+  fpCabRig.add(visor);
+  // rear-view mirror
+  /* The mirror sits toward the DRIVER's side of the header rail rather than
+     dead centre: a portrait phone only sees about 19 degrees either side of
+     the seat, and a centre-mounted mirror would be off the frame entirely. */
+  var mirArm = box(0.05, 0.13, 0.05, toon(0x3a3f48), -0.40, 2.95, -2.06);
+  mirArm.userData.noOutline = true;
+  fpCabRig.add(mirArm);
+  var mirror = box(0.34, 0.12, 0.05, toon(0x22262c), -0.40, 2.86, -2.05);
+  fpCabRig.add(mirror);
+  // the glass reflects the dim cab, not the sky: a mid-dark slate, never white
+  var mirFace = box(0.29, 0.08, 0.02, basic(0x46505e), -0.40, 2.86, -2.026);
+  mirFace.userData.noOutline = true;
+  fpCabRig.add(mirFace);
+  /* the rosary hanging off it - and a little pine air freshener behind it,
+     because every working van in Acuña has both */
+  fpRosary = new THREE.Group();
+  fpRosary.position.set(-0.44, 2.80, -2.05);
+  fpCabRig.add(fpRosary);
+  for (var bd = 0; bd < 6; bd++) {
+    var bead = cyl(0.015, 0.015, 0.022, 6, toon(0xc9a227), 0, -0.035 - bd * 0.036, 0);
+    bead.userData.noOutline = true;
+    fpRosary.add(bead);
+  }
+  var cross1 = box(0.018, 0.065, 0.016, toon(0xc9a227), 0, -0.285, 0);
+  cross1.userData.noOutline = true;
+  fpRosary.add(cross1);
+  var cross2 = box(0.048, 0.018, 0.016, toon(0xc9a227), 0, -0.272, 0);
+  cross2.userData.noOutline = true;
+  fpRosary.add(cross2);
+  var tree = planeMesh(0.058, 0.072, new THREE.MeshBasicMaterial({
+    color: 0x2f8f4a, side: THREE.DoubleSide, fog: false }));
+  tree.position.set(-0.10, -0.14, 0.015);
+  tree.userData.noOutline = true;
+  fpRosary.add(tree);
+  outlineAll(fpCabRig, 0.022);
+
+  /* ---------------- the hands and the phone ---------------- */
+  fpHandRig = new THREE.Group();
+  fpHandRig.visible = false;
+  fpCamAnchor.add(fpHandRig);
+  fpHandRig.userData.baseY = 0;
+
+  var shell = box(FP_SCREEN_W + 0.09, FP_SCREEN_H + 0.075, 0.035, toon(0x23272e), 0, 0, 0);
+  fpHandRig.add(shell);
+  var bezel = box(FP_SCREEN_W + 0.02, FP_SCREEN_H + 0.02, 0.03, toon(0x11141a), 0, 0, 0.006);
+  bezel.userData.noOutline = true;
+  fpHandRig.add(bezel);
+  fpScreenMesh = planeMesh(FP_SCREEN_W, FP_SCREEN_H,
+    new THREE.MeshBasicMaterial({ map: TET_TEX, fog: false }));
+  fpScreenMesh.position.z = 0.023;
+  fpScreenMesh.userData.noOutline = true;
+  fpHandRig.add(fpScreenMesh);
+  // speaker slot + camera dot, so the handset reads as a phone
+  var slot = box(0.10, 0.014, 0.02, basic(0x000000), 0, FP_SCREEN_H * 0.5 + 0.026, 0.020);
+  slot.userData.noOutline = true;
+  fpHandRig.add(slot);
+
+  var hL = fpHand(-1); hL.position.set(-(FP_SCREEN_W * 0.5 + 0.085), -0.03, -0.01);
+  var hR = fpHand(1);  hR.position.set(FP_SCREEN_W * 0.5 + 0.085, -0.03, -0.01);
+  fpHandRig.add(hL); fpHandRig.add(hR);
+  fpThumbL = hL.userData.thumb; fpThumbR = hR.userData.thumb;
+  outlineAll(fpHandRig, 0.007);
+}
+
+/* size and place the hands + phone from the CAMERA's frustum, so a 390-wide
+   portrait phone and a 1600-wide desktop both get a readable screen that sits
+   in the lower part of the frame with the windshield above it */
+function fpLayout() {
+  if (!fpHandRig) return;
+  var aspect = camera.aspect || 1;
+  var hFull = 2 * FP_DIST * Math.tan(camera.fov * Math.PI / 360);
+  var wFull = hFull * aspect;
+  /* The fraction is chosen so the HANDS still fit: a palm's outer edge sits at
+     0.485 of local x against a 0.30 screen half-width, i.e. 1.6x, so anything
+     over ~0.62 of the frame width would push them off the sides. */
+  var s = (wFull * (aspect < 1 ? 0.62 : 0.46)) / FP_SCREEN_W;
+  var maxS = (hFull * 0.42) / FP_SCREEN_H;         // never eat the whole frame
+  if (s > maxS) s = maxS;
+  s = clamp(s, 0.30, 3.0);
+  fpHandRig.scale.setScalar(s);
+  /* Keep the bottom of the frame free. On a touch device the two lane buttons
+     and the ROTAR / CAER row live down there, and a handset drawn over them
+     would be a phone you cannot play. The reserve is a fraction of the FRAME,
+     so it holds at any aspect and needs no vh anywhere. */
+  var half = FP_SCREEN_H * s * 0.5;
+  var y = -hFull * 0.5 + hFull * (IS_TOUCH ? 0.32 : 0.09) + half + 0.012;
+  var topCap = hFull * 0.05 - half;                // never past the mid-line
+  if (y > topCap) y = topCap;
+  fpHandRig.userData.baseY = y;
+  fpHandRig.position.set(0, y, -FP_DIST);
+}
+function fpAnimate(dt) {
+  if (!fpHandRig) return;
+  FP.t += dt;
+  var t = FP.t;
+  // idle breathing: about a degree and a half, slow, screen stays level
+  fpHandRig.rotation.z = Math.sin(t * 0.9) * 0.013;
+  fpHandRig.rotation.x = Math.sin(t * 0.7 + 1.1) * 0.020;
+  fpHandRig.rotation.y = Math.sin(t * 0.53 + 2.3) * 0.024;
+  fpHandRig.position.y = fpHandRig.userData.baseY + Math.sin(t * 1.25) * 0.006;
+  FP.thumbL = Math.max(0, FP.thumbL - dt * 7);
+  FP.thumbR = Math.max(0, FP.thumbR - dt * 7);
+  if (fpThumbL) fpThumbL.rotation.x = -0.35 - FP.thumbL * 0.55;
+  if (fpThumbR) fpThumbR.rotation.x = -0.35 - FP.thumbR * 0.55;
+  if (fpRosary) {
+    fpRosary.rotation.z = Math.sin(t * 1.5) * 0.11;
+    fpRosary.rotation.x = Math.sin(t * 1.1 + 0.8) * 0.06;
+  }
+}
+
+/* ================================================================
+   6f. RESCO BLOCKS  -  the phone mini-game
+   A full tetromino game drawn into a 640x360 CanvasTexture: 7-bag
+   randomiser, SRS-style rotation with wall kicks (its own table for the
+   I piece), ghost piece, soft and hard drop, 0.4 s lock delay with a
+   move-reset cap, flashing line clears, 100/300/500/800 x level scoring,
+   and gravity that tightens as the lines come in. Topping out is NOT a
+   fail: the well is swept and play continues, because the goal is to reach
+   CFG.JAM_ROWS_TO_CLEAR cleared rows, not to survive.
+   Every cell is a RESCO cardboard box - tape bands, a flap seam, the blue
+   wordmark and a tiny half-Mexico / half-USA roundel - in a slightly
+   different card shade per tetromino so the pieces still read apart.
+   ================================================================ */
+var TET_W = 10, TET_H = 15, TET_CELL = 20;
+var TET_CANVAS = null, TET_CTX = null, TET_TEX = null;
+var TET_SPRITE = [], TET_GHOST = null;
+var TET_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+var TET_DEF = {
+  I: { n: 4, cells: [[0, 1], [1, 1], [2, 1], [3, 1]], hex: '#cfa87a' },
+  O: { n: 2, cells: [[0, 0], [1, 0], [0, 1], [1, 1]], hex: '#dcb888' },
+  T: { n: 3, cells: [[1, 0], [0, 1], [1, 1], [2, 1]], hex: '#bb9163' },
+  S: { n: 3, cells: [[1, 0], [2, 0], [0, 1], [1, 1]], hex: '#c9a071' },
+  Z: { n: 3, cells: [[0, 0], [1, 0], [1, 1], [2, 1]], hex: '#ae8459' },
+  J: { n: 3, cells: [[0, 0], [0, 1], [1, 1], [2, 1]], hex: '#c1996d' },
+  L: { n: 3, cells: [[2, 0], [0, 1], [1, 1], [2, 1]], hex: '#a67c50' }
+};
+/* SRS wall kicks, CLOCKWISE only - the phone has one rotate button. Written
+   in SRS coordinates (+y is UP); the y is negated on use because the well's
+   own y runs downward. Index = the rotation state being left. */
+var TET_KICK = [
+  [[0, 0], [-1, 0], [-1,  1], [0, -2], [-1, -2]],   // 0 -> 1
+  [[0, 0], [ 1, 0], [ 1, -1], [0,  2], [ 1,  2]],   // 1 -> 2
+  [[0, 0], [ 1, 0], [ 1,  1], [0, -2], [ 1, -2]],   // 2 -> 3
+  [[0, 0], [-1, 0], [-1, -1], [0,  2], [-1,  2]]    // 3 -> 0
+];
+var TET_KICK_I = [
+  [[0, 0], [-2, 0], [ 1, 0], [-2, -1], [ 1,  2]],
+  [[0, 0], [-1, 0], [ 2, 0], [-1,  2], [ 2, -1]],
+  [[0, 0], [ 2, 0], [-1, 0], [ 2,  1], [-1, -2]],
+  [[0, 0], [ 1, 0], [-2, 0], [ 1, -2], [-2,  1]]
+];
+var TET_SCORE = [0, 100, 300, 500, 800];
+var TET_FLASH_DUR = 0.36, TET_LOCK_DELAY = 0.40;
+
+var TET = {
+  grid: null, bag: [], cur: null, next: null, rot: 0, px: 0, py: 0,
+  fall: 0, lock: 0, resets: 0, lines: 0, score: 0, level: 1,
+  flash: 0, flashRows: [], done: 0, doneT: 0, tops: 0, hint: 0,
+  soft: false, softBtn: false, dirty: true, drawAcc: 0
+};
+
+/* one cardboard box, pre-rendered once so the per-frame draw is drawImage */
+function tetMakeSprite(hex, ghost) {
+  var S = TET_CELL, c = cv(S, S), g = c.getContext('2d');
+  g.clearRect(0, 0, S, S);
+  if (ghost) {
+    g.strokeStyle = 'rgba(255,246,232,0.50)';
+    g.lineWidth = 2;
+    g.strokeRect(2.5, 2.5, S - 5, S - 5);
+    return c;
+  }
+  g.fillStyle = hex; g.fillRect(1, 1, S - 2, S - 2);
+  g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(1, 1, S - 2, 3);
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(1, S - 4, S - 2, 3);
+  g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(S - 4, 1, 3, S - 2);
+  // packing tape: one band down the girth, one across
+  g.fillStyle = 'rgba(236,224,196,0.55)';
+  g.fillRect(S * 0.42, 1, S * 0.17, S - 2);
+  g.fillRect(1, S * 0.60, S - 2, S * 0.14);
+  // the flap seam across the lid
+  g.strokeStyle = 'rgba(0,0,0,0.32)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(1, S * 0.34 + 0.5); g.lineTo(S - 1, S * 0.34 + 0.5); g.stroke();
+  // the RESCO mark: the half-Mexico / half-USA roundel and the blue wordmark
+  var er = S * 0.115, ex = S * 0.20, ey = S * 0.20;
+  g.save();
+  g.beginPath(); g.arc(ex, ey, er, 0, Math.PI * 2); g.clip();
+  g.fillStyle = '#0e7a3c'; g.fillRect(ex - er, ey - er, er * 0.66, er * 2);
+  g.fillStyle = '#fff6e8'; g.fillRect(ex - er * 0.34, ey - er, er * 0.68, er * 2);
+  g.fillStyle = '#d42a2a'; g.fillRect(ex + er * 0.34, ey - er, er * 0.66, er * 2);
+  for (var st = 0; st < 4; st++) {
+    g.fillStyle = (st % 2 === 0) ? '#d42a2a' : '#fff6e8';
+    g.fillRect(ex, ey - er + st * er * 0.5, er, er * 0.5);
+  }
+  g.fillStyle = '#2a3b8f'; g.fillRect(ex, ey - er, er * 0.6, er * 0.9);
+  g.restore();
+  g.strokeStyle = '#14181f'; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(ex, ey, er, 0, Math.PI * 2); g.stroke();
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.font = 'bold ' + Math.max(4, Math.round(S * 0.24)) + 'px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#1E5BFF';
+  g.fillText('RESCO', ex + er + 1, ey);
+  // the dark cel outline round the whole box
+  g.strokeStyle = '#14181f'; g.lineWidth = 2;
+  g.strokeRect(1, 1, S - 2, S - 2);
+  return c;
+}
+
+function tetInit() {
+  if (TET_CANVAS) return;
+  TET_CANVAS = cv(640, 360);
+  TET_CTX = TET_CANVAS.getContext('2d');
+  TET_TEX = new THREE.CanvasTexture(TET_CANVAS);
+  TET_TEX.minFilter = THREE.LinearFilter;
+  TET_TEX.magFilter = THREE.LinearFilter;
+  TET_TEX.generateMipmaps = false;
+  TET_TEX.wrapS = TET_TEX.wrapT = THREE.ClampToEdgeWrapping;
+  TET_TEX.anisotropy = MAXANISO;
+  for (var i = 0; i < TET_KEYS.length; i++) TET_SPRITE.push(tetMakeSprite(TET_DEF[TET_KEYS[i]].hex, false));
+  TET_GHOST = tetMakeSprite(null, true);
+  tetReset();
+  tetDraw();
+}
+
+/* the four cells of a piece, rotated CW `rot` times inside its own n-box */
+function tetCells(key, rot) {
+  var d = TET_DEF[key];
+  if (!d) return [];
+  var n = d.n, out = [], r = ((rot % 4) + 4) % 4;
+  for (var i = 0; i < d.cells.length; i++) {
+    var x = d.cells[i][0], y = d.cells[i][1];
+    for (var k = 0; k < r; k++) { var t = x; x = n - 1 - y; y = t; }
+    out.push([x, y]);
+  }
+  return out;
+}
+function tetFits(key, rot, px, py) {
+  var c = tetCells(key, rot);
+  for (var i = 0; i < c.length; i++) {
+    var x = px + c[i][0], y = py + c[i][1];
+    if (x < 0 || x >= TET_W || y >= TET_H) return false;
+    if (y >= 0 && TET.grid[y][x]) return false;
+  }
+  return true;
+}
+function tetRefillBag() {
+  var b = TET_KEYS.slice();
+  for (var i = b.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = b[i]; b[i] = b[j]; b[j] = t;
+  }
+  for (var k = 0; k < b.length; k++) TET.bag.push(b[k]);
+}
+function tetPull() { if (TET.bag.length < 2) tetRefillBag(); return TET.bag.shift(); }
+function tetClearWell() {
+  for (var y = 0; y < TET_H; y++) for (var x = 0; x < TET_W; x++) TET.grid[y][x] = 0;
+}
+function tetSpawn() {
+  TET.cur = TET.next || tetPull();
+  TET.next = tetPull();
+  TET.rot = 0;
+  TET.px = Math.floor((TET_W - TET_DEF[TET.cur].n) / 2);
+  TET.py = 0;
+  TET.fall = 0; TET.lock = 0; TET.resets = 0;
+  TET.dirty = true;
+  if (!tetFits(TET.cur, TET.rot, TET.px, TET.py)) {
+    /* TOPPED OUT. There is no hard fail here: the stack is swept and the
+       line count carries on, because the interlude ends on lines cleared. */
+    TET.tops++;
+    tetClearWell();
+    SFX.tetTop();
+  }
+}
+function tetActive() { return !!TET.cur && !TET.done && TET.flash <= 0; }
+function tetKickThumb(dir) {
+  if (dir < 0) FP.thumbL = 1; else FP.thumbR = 1;
+}
+function tetMove(dir) {
+  if (!tetActive()) return false;
+  var d = dir < 0 ? -1 : 1;
+  if (!tetFits(TET.cur, TET.rot, TET.px + d, TET.py)) return false;
+  TET.px += d;
+  if (TET.lock > 0 && TET.resets < 12) { TET.lock = 0; TET.resets++; }
+  TET.dirty = true;
+  tetKickThumb(d);
+  SFX.tetMove();
+  return true;
+}
+function tetRotate() {
+  if (!tetActive()) return false;
+  if (TET.cur === 'O') { SFX.tetRot(); return false; }
+  var from = ((TET.rot % 4) + 4) % 4, to = (from + 1) & 3;
+  var table = (TET.cur === 'I') ? TET_KICK_I : TET_KICK;
+  var k = table[from];
+  for (var i = 0; i < k.length; i++) {
+    var ox = k[i][0], oy = -k[i][1];          // SRS +y is up, the well's is down
+    if (tetFits(TET.cur, to, TET.px + ox, TET.py + oy)) {
+      TET.rot = to; TET.px += ox; TET.py += oy;
+      if (TET.lock > 0 && TET.resets < 12) { TET.lock = 0; TET.resets++; }
+      TET.dirty = true;
+      tetKickThumb(1);
+      SFX.tetRot();
+      return true;
+    }
+  }
+  return false;
+}
+function tetGhostY() {
+  var y = TET.py, guard = 0;
+  while (tetFits(TET.cur, TET.rot, TET.px, y + 1) && guard++ < 40) y++;
+  return y;
+}
+function tetHardDrop() {
+  if (!tetActive()) return false;
+  var gy = tetGhostY();
+  TET.score += Math.max(0, gy - TET.py) * 2;
+  TET.py = gy;
+  tetKickThumb(1);
+  tetLockPiece();
+  return true;
+}
+function tetLockPiece() {
+  var c = tetCells(TET.cur, TET.rot), i;
+  var ci = TET_KEYS.indexOf(TET.cur) + 1;
+  for (i = 0; i < c.length; i++) {
+    var x = TET.px + c[i][0], y = TET.py + c[i][1];
+    if (y >= 0 && y < TET_H && x >= 0 && x < TET_W) TET.grid[y][x] = ci;
+  }
+  SFX.tetLock();
+  var rows = [];
+  for (var y2 = 0; y2 < TET_H; y2++) {
+    var full = true;
+    for (var x2 = 0; x2 < TET_W; x2++) if (!TET.grid[y2][x2]) { full = false; break; }
+    if (full) rows.push(y2);
+  }
+  TET.dirty = true;
+  if (rows.length) {
+    TET.flashRows = rows;
+    TET.flash = TET_FLASH_DUR;
+    TET.cur = null;                     // nothing falls while the rows flash
+  } else {
+    tetSpawn();
+  }
+}
+function tetCommitClear() {
+  var rows = TET.flashRows, n = rows.length, i, x;
+  TET.score += (TET_SCORE[Math.min(n, 4)] || 800) * TET.level;
+  TET.lines += n;
+  TET.level = 1 + Math.floor(TET.lines / 5);
+  /* rows are ascending (top first). Removing one and pushing a blank onto the
+     top leaves every LOWER index in the list untouched, so a straight walk is
+     correct without any index fixing up. */
+  for (i = 0; i < rows.length; i++) {
+    TET.grid.splice(rows[i], 1);
+    var blank = [];
+    for (x = 0; x < TET_W; x++) blank.push(0);
+    TET.grid.unshift(blank);
+  }
+  TET.flashRows = [];
+  TET.flash = 0;
+  TET.dirty = true;
+  SFX.tetClear(n);
+  if (TET.lines >= Math.max(1, CFG.JAM_ROWS_TO_CLEAR | 0)) {
+    TET.done = 1; TET.doneT = 0;
+    TET.cur = null;
+    SFX.tetWin();
+  } else {
+    tetSpawn();
+  }
+}
+function tetFallInterval() {
+  var base = Math.max(0.16, 0.80 - TET.lines * 0.085 - (TET.level - 1) * 0.04);
+  return TET.soft ? base * 0.12 : base;
+}
+function tetUpdate(dt) {
+  if (!TET.grid) return;
+  if (TET.hint > 0) { TET.hint = Math.max(0, TET.hint - dt); TET.dirty = true; }
+  if (TET.done) { TET.doneT += dt; return; }
+  if (TET.flash > 0) {
+    TET.flash -= dt;
+    TET.dirty = true;
+    if (TET.flash <= 0) tetCommitClear();
+    return;
+  }
+  if (!TET.cur) { tetSpawn(); return; }
+  TET.soft = !!(TET.softBtn || keys['s'] || keys['arrowdown'] ||
+                keys['ArrowDown'] || keys['KeyS']);
+  if (tetFits(TET.cur, TET.rot, TET.px, TET.py + 1)) {
+    TET.lock = 0;
+    TET.fall += dt;
+    var iv = tetFallInterval(), guard = 0;
+    while (TET.fall >= iv && guard++ < 24) {
+      TET.fall -= iv;
+      if (!tetFits(TET.cur, TET.rot, TET.px, TET.py + 1)) break;
+      TET.py++;
+      if (TET.soft) TET.score += 1;
+      TET.dirty = true;
+    }
+  } else {
+    TET.fall = 0;
+    TET.lock += dt;
+    if (TET.lock >= TET_LOCK_DELAY) tetLockPiece();
+  }
+}
+function tetReset() {
+  TET.grid = [];
+  for (var y = 0; y < TET_H; y++) {
+    var row = [];
+    for (var x = 0; x < TET_W; x++) row.push(0);
+    TET.grid.push(row);
+  }
+  TET.bag = []; TET.cur = null; TET.next = null; TET.rot = 0; TET.px = 0; TET.py = 0;
+  TET.fall = 0; TET.lock = 0; TET.resets = 0;
+  TET.lines = 0; TET.score = 0; TET.level = 1;
+  TET.flash = 0; TET.flashRows = []; TET.done = 0; TET.doneT = 0; TET.tops = 0;
+  TET.hint = 2.0; TET.soft = false; TET.softBtn = false;
+  TET.dirty = true; TET.drawAcc = 0;
+  tetRefillBag();
+  TET.next = tetPull();
+  tetSpawn();
+}
+
+/* ---- the screen itself ---- */
+var TET_WX = 104, TET_WY = 46;                 // well origin inside the canvas
+function tetDraw() {
+  if (!TET_CTX || !TET.grid) return;
+  var g = TET_CTX, W = 640, H = 360, i, x, y;
+  var WW = TET_W * TET_CELL, WH = TET_H * TET_CELL;   // 200 x 300
+
+  g.fillStyle = '#101722'; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(255,255,255,0.020)';
+  for (y = 38; y < H; y += 6) g.fillRect(0, y, W, 3);
+
+  // header
+  g.fillStyle = '#14181f'; g.fillRect(0, 0, W, 36);
+  g.fillStyle = '#FF7A00'; g.fillRect(0, 33, W, 3);
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.lineJoin = 'round'; g.miterLimit = 2;
+  g.font = 'bold 23px "Arial Black", Impact, sans-serif';
+  g.lineWidth = 5; g.strokeStyle = '#14181f';
+  g.strokeText('RESCO', 14, 17); g.fillStyle = '#FFFFFF'; g.fillText('RESCO', 14, 17);
+  var wRes = g.measureText('RESCO ').width;
+  g.strokeText('BLOCKS', 14 + wRes, 17);
+  g.fillStyle = '#FFC24A'; g.fillText('BLOCKS', 14 + wRes, 17);
+  g.fillStyle = '#0e7a3c'; g.fillRect(W - 60, 9, 14, 17);
+  g.fillStyle = '#fff6e8'; g.fillRect(W - 46, 9, 14, 17);
+  g.fillStyle = '#d42a2a'; g.fillRect(W - 32, 9, 14, 17);
+  g.strokeStyle = '#14181f'; g.lineWidth = 2; g.strokeRect(W - 60, 9, 42, 17);
+
+  // the well
+  g.fillStyle = '#0a0e15'; g.fillRect(TET_WX, TET_WY, WW, WH);
+  g.strokeStyle = 'rgba(120,140,170,0.16)'; g.lineWidth = 1;
+  for (i = 1; i < TET_W; i++) {
+    g.beginPath(); g.moveTo(TET_WX + i * TET_CELL + 0.5, TET_WY);
+    g.lineTo(TET_WX + i * TET_CELL + 0.5, TET_WY + WH); g.stroke();
+  }
+  for (i = 1; i < TET_H; i++) {
+    g.beginPath(); g.moveTo(TET_WX, TET_WY + i * TET_CELL + 0.5);
+    g.lineTo(TET_WX + WW, TET_WY + i * TET_CELL + 0.5); g.stroke();
+  }
+  g.strokeStyle = '#14181f'; g.lineWidth = 7; g.strokeRect(TET_WX - 3.5, TET_WY - 3.5, WW + 7, WH + 7);
+  g.strokeStyle = '#FF7A00'; g.lineWidth = 2; g.strokeRect(TET_WX - 3.5, TET_WY - 3.5, WW + 7, WH + 7);
+
+  // settled cardboard
+  for (y = 0; y < TET_H; y++) {
+    for (x = 0; x < TET_W; x++) {
+      var v = TET.grid[y][x];
+      if (v) g.drawImage(TET_SPRITE[v - 1], TET_WX + x * TET_CELL, TET_WY + y * TET_CELL);
+    }
+  }
+  // ghost, then the falling piece
+  if (TET.cur && TET.flash <= 0 && !TET.done) {
+    var ci = TET_KEYS.indexOf(TET.cur);
+    var cells = tetCells(TET.cur, TET.rot);
+    var gy = tetGhostY();
+    for (i = 0; i < cells.length; i++) {
+      var ax = TET.px + cells[i][0], ay = gy + cells[i][1];
+      if (ay >= 0) g.drawImage(TET_GHOST, TET_WX + ax * TET_CELL, TET_WY + ay * TET_CELL);
+    }
+    for (i = 0; i < cells.length; i++) {
+      var bx = TET.px + cells[i][0], by = TET.py + cells[i][1];
+      if (by >= 0) g.drawImage(TET_SPRITE[ci], TET_WX + bx * TET_CELL, TET_WY + by * TET_CELL);
+    }
+  }
+  // the line-clear flash
+  if (TET.flash > 0) {
+    var a = (Math.floor(TET.flash * 26) % 2 === 0) ? 0.92 : 0.28;
+    g.fillStyle = 'rgba(255,246,232,' + a.toFixed(2) + ')';
+    for (i = 0; i < TET.flashRows.length; i++) {
+      g.fillRect(TET_WX, TET_WY + TET.flashRows[i] * TET_CELL, WW, TET_CELL);
+    }
+  }
+
+  // the panel
+  var PX = 334, goal = Math.max(1, CFG.JAM_ROWS_TO_CLEAR | 0);
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  g.font = 'bold 15px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#FF9A2E'; g.fillText('SIGUIENTE', PX, 58);
+  g.fillStyle = '#0a0e15'; g.fillRect(PX, 70, 112, 92);
+  g.strokeStyle = '#14181f'; g.lineWidth = 5; g.strokeRect(PX, 70, 112, 92);
+  if (TET.next) {
+    var nc = tetCells(TET.next, 0), ni = TET_KEYS.indexOf(TET.next);
+    var mnx = 9, mxx = -9, mny = 9, mxy = -9;
+    for (i = 0; i < nc.length; i++) {
+      mnx = Math.min(mnx, nc[i][0]); mxx = Math.max(mxx, nc[i][0]);
+      mny = Math.min(mny, nc[i][1]); mxy = Math.max(mxy, nc[i][1]);
+    }
+    var ox = PX + 56 - ((mxx - mnx + 1) * TET_CELL) * 0.5 - mnx * TET_CELL;
+    var oy = 116 - ((mxy - mny + 1) * TET_CELL) * 0.5 - mny * TET_CELL;
+    for (i = 0; i < nc.length; i++) {
+      g.drawImage(TET_SPRITE[ni], ox + nc[i][0] * TET_CELL, oy + nc[i][1] * TET_CELL);
+    }
+  }
+  g.font = 'bold 15px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#FF9A2E'; g.fillText('LÍNEAS', PX, 190);
+  g.font = 'bold 34px "Arial Black", Impact, sans-serif';
+  g.lineWidth = 6; g.strokeStyle = '#14181f';
+  var lt = TET.lines + ' / ' + goal;
+  g.strokeText(lt, PX, 218); g.fillStyle = '#8CF7B4'; g.fillText(lt, PX, 218);
+  g.font = 'bold 15px "Arial Black", Impact, sans-serif';
+  g.fillStyle = '#FF9A2E'; g.fillText('PUNTOS', PX, 254);
+  g.font = 'bold 29px "Arial Black", Impact, sans-serif';
+  g.lineWidth = 6; g.strokeStyle = '#14181f';
+  g.strokeText(String(TET.score), PX, 282);
+  g.fillStyle = '#FFD75E'; g.fillText(String(TET.score), PX, 282);
+  var pips = Math.min(12, goal);
+  for (i = 0; i < pips; i++) {
+    var bxp = PX + i * 23;
+    g.fillStyle = (i < TET.lines) ? '#22D65B' : '#2b3547';
+    g.fillRect(bxp, 302, 17, 15);
+    g.strokeStyle = '#14181f'; g.lineWidth = 2; g.strokeRect(bxp, 302, 17, 15);
+  }
+
+  if (TET.done) {
+    g.fillStyle = 'rgba(10,14,21,0.74)'; g.fillRect(0, 118, W, 124);
+    g.fillStyle = '#22D65B'; g.fillRect(0, 118, W, 5); g.fillRect(0, 237, W, 5);
+    inkText(g, '¡LISTO!', W * 0.5, 180, W * 0.7, 74, '#8CF7B4', 12);
+  }
+  if (TET.hint > 0) {
+    var ha = clamp(TET.hint / 0.4, 0, 1);
+    g.globalAlpha = ha;
+    g.fillStyle = 'rgba(20,24,31,0.88)'; g.fillRect(0, 150, W, 62);
+    g.fillStyle = '#FF7A00'; g.fillRect(0, 150, W, 4); g.fillRect(0, 208, W, 4);
+    inkText(g, 'Mueve ◀ ▶ · Gira ▲ · Suelta ▼',
+            W * 0.5, 181, W * 0.92, 26, '#FFF6E8', 7);
+    g.globalAlpha = 1;
+  }
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  TET_TEX.needsUpdate = true;
+}
+
+/* ================================================================
+   6g. THE TRAFFIC-JAM INTERLUDE  -  state machine + the jam itself
+
+   Phases, all of them INSIDE state PLAYING so pause, restart, the error box,
+   visibilitychange and the touch UI keep working exactly as before:
+
+     ''          no interlude (every normal run, start to finish)
+     APPROACH    the callout, the jam fills the road ahead, the van brakes to
+                 a crawl and then to a stop; steering ignored, nothing can
+                 hurt you, boost pads are inert
+     STOPPED     two honks, a slap on the wheel and three speech bubbles
+     CUT_IN      0.4 s black fade; the cab view comes up at the midpoint
+     PHONE       first-person cab + RESCO BLOCKS until the target rows clear
+     CUT_OUT     0.4 s black fade back to the chase camera
+     RELEASE     the jam accelerates away over ~4.5 s and the van rejoins
+
+   STOPPED -> CUT_OUT is the run-clock's dead zone: stepPlaying() hands those
+   phases to stepJamHold(), which never touches GAME.time, so the interlude
+   costs the player nothing on the timer. The Tetris score is banked into
+   GAME.tetScore and shown on the results card.
+
+   The jam cars are their OWN pool. They are never obstacles, never streamed,
+   never collided with and never seen by the reachability solver or by
+   courseAudit(); the only thing they do to the real course is stop hazards
+   streaming into the stretch they occupy while the interlude is running.
+   ================================================================ */
+var JAM_APPROACH_LEN = 205;             // braking room between callout and stop
+var JAM_RUNS_KEY = 'rr_runs';
+var SPARSE_RANGES = [];                 // the ZONA TURBO stretches, per course
+var JAM = {
+  armed: false, phase: '', t: 0, beat: 0, fired: false,
+  d: 0, stopD: 0, frontMax: 0, clearUntil: 0,
+  fp: false, fade: 0, honkT: 0, slapT: 0, runs: 0
+};
+var jamPool = {}, jamLive = [];
+
+function loadRunCount() {
+  try {
+    var v = window.localStorage.getItem(JAM_RUNS_KEY);
+    var n = parseInt(v, 10);
+    return (isFinite(n) && n >= 0) ? n : 0;
+  } catch (e) { return 0; }
+}
+function saveRunCount(n) {
+  try { window.localStorage.setItem(JAM_RUNS_KEY, String(n)); } catch (e) { }
+}
+/* Count the run (it has STARTED, so quitting still spends it) and say whether
+   it gets the interlude. The counter RESETS on a jam run, so 3 / 6 / 9 ... */
+function jamDecide() {
+  var n = loadRunCount() + 1;
+  var want;
+  if (JAM_URL === -1) want = false;
+  else if (jamForceNext) { want = true; jamForceNext = false; }
+  else if (JAM_URL === 1) want = true;
+  else want = !!CFG.JAM_MODE && n >= Math.max(1, CFG.JAM_EVERY_N_RUNS | 0);
+  saveRunCount(want ? 0 : n);
+  JAM.runs = want ? 0 : n;
+  return want;
+}
+
+/* Where the interlude fires: about halfway across, inside a ZONA TURBO
+   (the sparse stretches), after jump 1 and before the boundary marker, and
+   never inside a jump's run-up, ramp, gap or landing. */
+function jamPickAnchor() {
+  var span = Math.max(1, CFG.COURSE_D1 - CFG.COURSE_D0);
+  var want = CFG.COURSE_D0 + span * 0.50;
+  var lo = CFG.COURSE_D0 + span * 0.44;
+  var hi = Math.min(CFG.COURSE_D0 + span * 0.56, CFG.BOUNDARY_D - 20);
+  if (hi < lo) hi = lo;
+  var best = 0, bestErr = 1e9, i;
+  for (i = 0; i < SPARSE_RANGES.length; i++) {
+    var s = SPARSE_RANGES[i];
+    var c = clamp(want, s.d0 + 30, Math.max(s.d0 + 30, s.d1 - 30));
+    if (c < lo || c > hi) continue;
+    var err = Math.abs(c - want);
+    if (err < bestErr) { bestErr = err; best = c; }
+  }
+  if (!best) best = clamp(want, lo, hi);
+  // never on top of a jump, and always after the first one
+  var guard = 0;
+  while (jumpClearZone(best) && guard++ < 40) best = jumpClearZone(best) + 30;
+  if (best < JUMPS[0].land + 80) best = JUMPS[0].land + 80;
+  // the whole set-piece has to be over before the next ramp's run-up
+  for (i = 0; i < JUMPS.length; i++) {
+    var runUp = JUMPS[i].d0 - 120;
+    if (runUp > best && runUp < best + JAM_APPROACH_LEN + 320) {
+      best = Math.max(CFG.COURSE_D0 + span * 0.38, runUp - JAM_APPROACH_LEN - 340);
+      break;
+    }
+  }
+  return Math.round(best);
+}
+
+/* ---- the jam fleet: its own pool, built from the same vehicle builders the
+   obstacle library uses, but never registered as obstacles ---- */
+function jamDressCar(g, def) {
+  var lamps = [];
+  var m = new THREE.MeshBasicMaterial({ color: 0xff3a1e, fog: false });
+  for (var s = -1; s <= 1; s += 2) {
+    var lamp = box(0.30, 0.20, 0.10, m, s * def.halfW * 0.66, 1.14, def.halfL + 0.06);
+    lamp.userData.noOutline = true;
+    g.add(lamp);
+    lamps.push(lamp);
+  }
+  g.userData.brakeLamps = lamps;
+}
+function jamAcquire(type) {
+  var p = jamPool[type] || (jamPool[type] = []);
+  var o;
+  if (p.length) o = p.pop();
+  else {
+    o = OBST_DEFS[type].build();
+    o.userData.jamType = type;
+    jamDressCar(o, OBST_DEFS[type]);
+    scene.add(o);
+  }
+  o.visible = true;
+  var lm = o.userData.brakeLamps;
+  if (lm) { lm[0].visible = true; lm[1].visible = true; }
+  return o;
+}
+function jamReleaseCar(o) {
+  o.visible = false;
+  (jamPool[o.userData.jamType] || (jamPool[o.userData.jamType] = [])).push(o);
+}
+function jamClearCars() {
+  for (var i = 0; i < jamLive.length; i++) jamReleaseCar(jamLive[i]);
+  jamLive.length = 0;
+}
+function jamSpawnCars() {
+  jamClearCars();
+  var perLane = IS_MOBILE ? 7 : 13;
+  var bigLeft = IS_MOBILE ? 0 : 2;
+  JAM.frontMax = JAM.stopD + 10;
+  for (var L = 0; L < CFG.LANES; L++) {
+    var d = JAM.stopD + 9.5 + Math.random() * 4 + L * 1.9;
+    for (var n = 0; n < perLane; n++) {
+      var roll = Math.random(), type;
+      if (roll > 0.90 && bigLeft > 0) { type = (Math.random() < 0.5) ? 'semi' : 'flatbed'; bigLeft--; }
+      else if (roll > 0.83) type = 'bus';
+      else if (roll > 0.46) type = 'pickup';
+      else type = 'sedan';
+      var def = OBST_DEFS[type];
+      var o = jamAcquire(type);
+      var u = o.userData;
+      u.lane = L;
+      u.d = d + def.halfL;
+      u.jx = laneX(L) + (Math.random() - 0.5) * 0.55;
+      u.v = 0; u.acc = 9 + Math.random() * 9; u.delay = 0;
+      o.position.set(u.jx, roadHeightAt(u.d), -u.d);
+      o.rotation.y = (Math.random() - 0.5) * 0.07;
+      jamLive.push(o);
+      if (u.d + def.halfL > JAM.frontMax) JAM.frontMax = u.d + def.halfL;
+      d = u.d + def.halfL + 2.4 + Math.random() * 3.4;
+    }
+  }
+  JAM.clearUntil = JAM.frontMax + 70;
+  /* Nothing REAL may be buried in the jam: a hazard hidden between two
+     stopped trucks is unfair, and the jam is a separate, non-collidable set.
+     Anything already streamed into that stretch is retired here; anything
+     still in the plan is skipped by streamCourse while the interlude runs. */
+  for (var i = activeObs.length - 1; i >= 0; i--) {
+    var od = activeObs[i].userData.d;
+    if (od > GAME.dist - 8 && od < JAM.clearUntil) {
+      release(activeObs[i]);
+      activeObs.splice(i, 1);
+    }
+  }
+}
+function jamUpdateCars(dt) {
+  if (!jamLive.length) return;
+  var releasing = (JAM.phase === 'RELEASE');
+  for (var i = jamLive.length - 1; i >= 0; i--) {
+    var o = jamLive[i], u = o.userData;
+    if (releasing) {
+      if (u.delay > 0) u.delay -= dt;
+      else {
+        u.v = Math.min(62, u.v + u.acc * dt);
+        u.d += u.v * dt;
+        o.position.z = -u.d;
+        o.position.y = roadHeightAt(u.d);
+        if (u.v > 0.6 && u.brakeLamps && u.brakeLamps[0].visible) {
+          u.brakeLamps[0].visible = false; u.brakeLamps[1].visible = false;
+        }
+        if (u.wheels) {
+          for (var w = 0; w < u.wheels.length; w++) u.wheels[w].rotation.x -= (u.v / 0.55) * dt;
+        }
+      }
+      if (u.d - GAME.dist > 320 || JAM.t > 4.4) {
+        jamReleaseCar(o);
+        jamLive.splice(i, 1);
+      }
+    }
+  }
+}
+
+/* ---- phase helpers ---- */
+function jamPhoneActive() { return JAM.phase === 'PHONE'; }
+function jamHolding() {
+  return JAM.phase === 'STOPPED' || JAM.phase === 'CUT_IN' ||
+         JAM.phase === 'PHONE' || JAM.phase === 'CUT_OUT';
+}
+function jamLockSteering() { return JAM.phase !== '' && JAM.phase !== 'RELEASE'; }
+function jamNoBoost() { return JAM.phase !== '' && JAM.phase !== 'RELEASE'; }
+function jamNoCollide() {
+  if (JAM.phase === '') return false;
+  if (JAM.phase === 'RELEASE') return JAM.t < 1.4;
+  return true;
+}
+function jamStage() {
+  if (JAM.phase === '') return '';
+  if (JAM.phase === 'APPROACH') return 'JAM_APPROACH';
+  if (JAM.phase === 'RELEASE') return 'JAM_RELEASE';
+  return 'JAM_PHONE';
+}
+/* every phase change re-syncs the touch layer: the ROTAR / CAER pair only
+   exists while the phase is actually PHONE, and the phase that turns the cab
+   view on is CUT_IN, one step earlier, so jamSetFp() alone is not enough. */
+function jamSetPhase(p) {
+  JAM.phase = p; JAM.t = 0; JAM.beat = 0;
+  updateTouchUI();
+}
+
+function jamSetFp(on) {
+  JAM.fp = !!on;
+  if (fpCabRig) fpCabRig.visible = !!on;
+  if (fpHandRig) fpHandRig.visible = !!on;
+  if (driverRig) driverRig.visible = !on;
+  if (vanWindshield) vanWindshield.visible = !on;
+  if (vanWsRef) vanWsRef.visible = !on;
+  if (vanBodyHull) vanBodyHull.visible = !on;
+  if (bubbleMesh && on) bubbleMesh.visible = false;
+  var h = $('hud');
+  if (h) {
+    if (on) h.className = '';
+    else if (GAME.state === 'PLAYING' || GAME.state === 'FINISHED') h.className = 'on';
+  }
+  invalidateHudRects();
+  updateTouchUI();
+}
+function jamFadeApply() {
+  var f = $('jamFade');
+  if (!f) return;
+  if (JAM.fade > 0.002) {
+    if (f.className !== 'on') f.className = 'on';
+    f.style.opacity = JAM.fade.toFixed(3);
+  } else if (f.className) {
+    f.className = '';
+    f.style.opacity = '0';
+  }
+}
+function jamHonkAmbience(dt) {
+  JAM.honkT -= dt;
+  if (JAM.honkT <= 0) {
+    JAM.honkT = 1.3 + Math.random() * 2.9;
+    SFX.jamHonk();
+  }
+}
+
+function jamReset() {
+  JAM.armed = false; JAM.phase = ''; JAM.t = 0; JAM.beat = 0; JAM.fired = false;
+  JAM.d = 0; JAM.stopD = 0; JAM.frontMax = 0; JAM.clearUntil = 0;
+  JAM.fade = 0; JAM.honkT = 0; JAM.slapT = 0;
+  jamClearCars();
+  jamSetFp(false);
+  jamFadeApply();
+  if (TET_CANVAS) { tetReset(); tetDraw(); }
+  musPhone(false);
+  FP.t = 0; FP.thumbL = 0; FP.thumbR = 0;
+}
+/* called once per run, straight after resetRun() */
+function jamPrepare() {
+  JAM.armed = jamDecide();
+  if (!JAM.armed) return;
+  JAM.d = jamPickAnchor();
+  JAM.stopD = JAM.d + JAM_APPROACH_LEN;
+  tetInit();
+  tetReset();
+}
+function jamBegin() {
+  JAM.fired = true;
+  jamSetPhase('APPROACH');
+  jamSpawnCars();
+  GAME.boostTime = 0;
+  callout('¡TRÁFICO PESADO!', 1.8);
+  toastCol('SIN SALIDA · A FRENAR', 'orange');
+  SFX.farHonk();
+  JAM.honkT = 0.9;
+}
+function jamStartRelease() {
+  for (var i = 0; i < jamLive.length; i++) {
+    var u = jamLive[i].userData;
+    u.v = 0;
+    u.acc = 10 + Math.random() * 10;
+    // the FRONT of the jam moves first, the way a real one breaks up
+    u.delay = clamp((JAM.frontMax - u.d) * 0.010, 0, 1.6) + Math.random() * 0.25;
+  }
+  SFX.farHonk();
+}
+
+/* the held phases: the run clock does not advance here at all */
+function stepJamHold(dt) {
+  JAM.t += dt;
+  GAME.speed = 0;
+  GAME.shake = Math.max(0, GAME.shake - dt * 2.0);
+  GAME.invuln = 0;
+  GAME.windX = 0;
+  if (JAM.slapT > 0) JAM.slapT = Math.max(0, JAM.slapT - dt);
+  jamHonkAmbience(dt);
+
+  var k;
+  if (JAM.phase === 'STOPPED') {
+    if (JAM.beat === 0 && JAM.t > 0.20) { JAM.beat = 1; SFX.honk(); }
+    else if (JAM.beat === 1 && JAM.t > 0.64) {
+      JAM.beat = 2; SFX.honk(); JAM.slapT = 0.85;
+      driverRage(1.7, ['¡No puede ser!']);
+    } else if (JAM.beat === 2 && JAM.t > 2.30) {
+      JAM.beat = 3; SFX.honk(); JAM.slapT = 0.75;
+      driverRage(1.7, ['¡Ándale, muévanse!']);
+    } else if (JAM.beat === 3 && JAM.t > 4.20) {
+      JAM.beat = 4;
+      driverRage(1.6, ['Bueno... mientras tanto']);
+    } else if (JAM.beat === 4 && JAM.t > 5.80) {
+      jamSetPhase('CUT_IN');
+      musPhone(true);
+    }
+  } else if (JAM.phase === 'CUT_IN') {
+    k = clamp(JAM.t / 0.40, 0, 1);
+    JAM.fade = (k < 0.5) ? (k / 0.5) : (1 - (k - 0.5) / 0.5);
+    if (!JAM.fp && k >= 0.5) { tetReset(); jamSetFp(true); }
+    if (k >= 1) { JAM.fade = 0; jamSetPhase('PHONE'); }
+  } else if (JAM.phase === 'PHONE') {
+    tetUpdate(dt);
+    if (TET.done && TET.doneT > 1.30) {
+      jamSetPhase('CUT_OUT');
+      driverRage(2.2, ['¡Ya se movieron!']);
+    }
+  } else if (JAM.phase === 'CUT_OUT') {
+    k = clamp(JAM.t / 0.40, 0, 1);
+    JAM.fade = (k < 0.5) ? (k / 0.5) : (1 - (k - 0.5) / 0.5);
+    if (JAM.fp && k >= 0.5) {
+      GAME.tetScore = TET.score;
+      GAME.tetLines = TET.lines;
+      jamSetFp(false);
+      musPhone(false);
+    }
+    if (k >= 1) {
+      JAM.fade = 0;
+      jamSetPhase('RELEASE');
+      jamStartRelease();
+      callout('¡ÓRALE, YA SE MOVIÓ!', 1.4);
+    }
+  }
+  jamFadeApply();
+  jamUpdateCars(dt);
+  streamCourse(GAME.dist);
+  updateMoments(dt);
+  updateObstacles(dt);
+  updateBoosts(dt);
+  updateCoins(dt);
+  updatePickups(dt);
+  updateWarns();
 }
 
 /* ================================================================
@@ -7020,7 +8319,7 @@ function generateCourse(seed) {
   var r = makeRNG(seed);
   obstaclePlan = []; boostPlan = []; sectionPlan = []; coinPlan = [];
   pickupPlan = []; warnPlan = []; PATTERN_LOG = []; CORRIDOR_SPANS = [];
-  momentPlan = []; momentCursor = 0;
+  momentPlan = []; momentCursor = 0; SPARSE_RANGES = [];
   GEN_STATS = { movers: 0, moversMoved: 0, moversDropped: 0, retries: 0,
                 repaired: 0, seed: seed >>> 0 };
 
@@ -7131,6 +8430,9 @@ function generateCourse(seed) {
       sectionPlan.push({ d: d - 50, text: '¡ZONA TURBO!', sub: '', zone: 'turbo' });
       turboStarts.push(d);
       var end2 = d + slen;
+      /* the sparse stretches, recorded for the traffic-jam interlude: it is
+         only ever dropped into one of these, never into a hazard section */
+      SPARSE_RANGES.push({ d0: d, d1: end2 });
       var lane = pathLane;
       /* the sparse stretch has a corridor too: the chain of boost pads. It is
          registered so a stray truck can never be dropped into it. */
@@ -7263,6 +8565,10 @@ function streamCourse(dist) {
   // obstacles
   while (obstacleCursor < obstaclePlan.length && obstaclePlan[obstacleCursor].d < dist + CFG.SPAWN_AHEAD) {
     var rec = obstaclePlan[obstacleCursor++];
+    /* nothing real is spawned inside the traffic jam: the jam is its own
+       non-collidable fleet and a hazard buried between two stopped trucks
+       would be unfair. JAM.clearUntil is 0 on every non-jam run. */
+    if (JAM.clearUntil && rec.d < JAM.clearUntil) continue;
     var o = acquire(rec.type);
     var def = OBST_DEFS[rec.type];
     o.userData.rec = rec;
@@ -7818,6 +9124,43 @@ var SFX = {
     tone(146.83, 0.28, 'triangle', 0.09, null, 0.88);   // D3
     tone(98.00, 0.95, 'triangle', 0.10, null, 1.30);    // G2
   },
+  /* the pop out of the tailpipes when the turbo lights */
+  backfire: function () {
+    noiseBurst(0.13, 900, 90, 0.20, 'lowpass');
+    tone(152, 0.16, 'square', 0.13, 58);
+    tone(88, 0.20, 'triangle', 0.09, 44, 0.03);
+  },
+  /* --- the traffic jam and the phone game --- */
+  jamHonk: function () {            // somebody four cars ahead leaning on it
+    var f = 300 + Math.random() * 180;
+    tone(f, 0.22 + Math.random() * 0.3, 'square', 0.045);
+    tone(f * 1.26, 0.20 + Math.random() * 0.3, 'square', 0.032, null, 0.01);
+  },
+  tetMove: function () { tone(1240, 0.028, 'square', 0.035); },
+  tetRot:  function () { tone(1560, 0.034, 'triangle', 0.042); tone(2080, 0.026, 'square', 0.020, null, 0.02); },
+  tetLock: function () {
+    noiseBurst(0.09, 620, 120, 0.085, 'lowpass');
+    tone(148, 0.10, 'square', 0.075, 96);
+  },
+  tetTop:  function () { tone(190, 0.30, 'sawtooth', 0.075, 90); noiseBurst(0.24, 500, 140, 0.07, 'lowpass'); },
+  tetClear: function (n) {          // one satisfying arpeggio, taller per row
+    var base = [659.25, 783.99, 987.77, 1318.51];
+    var k = clamp((n || 1) - 1, 0, 3);
+    for (var i = 0; i <= k + 1; i++) {
+      tone(base[Math.min(i, 3)] * (1 + k * 0.06), 0.15, 'triangle', 0.085, null, i * 0.045);
+    }
+    noiseBurst(0.20, 2600, 900, 0.055 + k * 0.02, 'bandpass');
+  },
+  tetWin: function () {              // the little jingle at the target rows
+    trumpetPhrase([
+      [783.99, 0.00, 0.10],
+      [987.77, 0.11, 0.10],
+      [1174.66, 0.22, 0.10],
+      [[1567.98, 1174.66], 0.34, 0.42]
+    ], 0.11);
+    tone(196.00, 0.20, 'triangle', 0.07, null, 0.00);
+    tone(293.66, 0.36, 'triangle', 0.06, null, 0.34);
+  },
   /* optional grito on a big coin streak */
   grito: function () {
     if (!audioReady) return;
@@ -7901,6 +9244,7 @@ var SFX = {
 var MUS = {
   on: true, mode: 'off', pending: null, bar: 0, slot: 0, step: 0, nextT: 0,
   bus: null, duck: null, gDrum: null, gBass: null, gBrass: null, gLead: null,
+  dry: null, phone: null,
   timer: null, notes: 0, err: 0, lastErr: '',
   introDone: false, log: null, logOn: false
 };
@@ -7915,7 +9259,20 @@ var MUS_MIX = { drum: 1.00, bass: 0.92, brass: 1.00, lead: 0.82 };
    renderer can stand up an identical graph and run the identical scheduler. */
 function musBuildBuses(ctx, dest) {
   var duck = ctx.createGain(); duck.gain.value = 1;
-  duck.connect(dest);
+  /* TWO ways out of the duck bus. `dry` is the normal one and is the only one
+     open in play. `phone` is a 600 - 3000 Hz band, quieter: during the
+     traffic-jam interlude the band goes down the driver's phone speaker
+     instead of the room, which is what sells the cut into the cab. Both
+     start exactly as before (dry 1, phone 0), so the offline renderer and
+     every existing mix number are untouched. */
+  var dry = ctx.createGain(); dry.gain.value = 1;
+  duck.connect(dry); dry.connect(dest);
+  var ph1 = ctx.createBiquadFilter();
+  ph1.type = 'highpass'; ph1.frequency.value = 600; ph1.Q.value = 0.7;
+  var ph2 = ctx.createBiquadFilter();
+  ph2.type = 'lowpass'; ph2.frequency.value = 3000; ph2.Q.value = 0.7;
+  var phone = ctx.createGain(); phone.gain.value = 0;
+  duck.connect(ph1); ph1.connect(ph2); ph2.connect(phone); phone.connect(dest);
   var bus = ctx.createGain(); bus.gain.value = 0.0001;
   bus.connect(duck);
   var gDrum = ctx.createGain(); gDrum.gain.value = MUS_MIX.drum; gDrum.connect(bus);
@@ -7928,11 +9285,21 @@ function musBuildBuses(ctx, dest) {
   hp.type = 'highpass'; hp.frequency.value = 40; hp.Q.value = 0.7;
   hp.connect(gBass); gBass.connect(bus);
   return { duck: duck, bus: bus, gDrum: gDrum, gBass: hp, gBrass: gBrass, gLead: gLead,
-           bassOut: gBass };
+           bassOut: gBass, dry: dry, phone: phone };
 }
 function musAttachBuses(n) {
   MUS.duck = n.duck; MUS.bus = n.bus; MUS.gDrum = n.gDrum;
   MUS.gBass = n.gBass; MUS.gBrass = n.gBrass; MUS.gLead = n.gLead;
+  MUS.dry = n.dry; MUS.phone = n.phone;
+}
+/* swap the band between the room and the driver's phone speaker */
+function musPhone(on) {
+  if (!AC || !MUS.dry || !MUS.phone) return;
+  try {
+    var t = AC.currentTime;
+    MUS.dry.gain.setTargetAtTime(on ? 0.0001 : 1, t, 0.09);
+    MUS.phone.gain.setTargetAtTime(on ? 0.52 : 0, t, 0.09);
+  } catch (e) { }
 }
 
 /* ---- harmony -------------------------------------------------------------
@@ -8600,6 +9967,9 @@ function musWantMode() {
     return GAME.finPhase >= 4 ? 'off' : 'customs';
   }
   if (GAME.state === 'PLAYING') {
+    // the interlude is not a chase: the band drops back to the plain loop and
+    // musPhone() puts it down the handset's speaker
+    if (JAM.phase !== '' && JAM.phase !== 'RELEASE') return 'run';
     if (GAME.airborne || GAME.boostTime > 0 || GAME.zone === 'turbo') return 'intense';
     return 'run';
   }
@@ -8637,7 +10007,7 @@ function renderMusicOffline(opts) {
   var save = {
     AC: AC, masterGain: masterGain, noiseBuf: noiseBuf, audioReady: audioReady,
     duck: MUS.duck, bus: MUS.bus, gDrum: MUS.gDrum, gBass: MUS.gBass,
-    gBrass: MUS.gBrass, gLead: MUS.gLead,
+    gBrass: MUS.gBrass, gLead: MUS.gLead, dry: MUS.dry, phone: MUS.phone,
     on: MUS.on, mode: MUS.mode, pending: MUS.pending, bar: MUS.bar, slot: MUS.slot,
     notes: MUS.notes, log: MUS.log, logOn: MUS.logOn, introDone: MUS.introDone
   };
@@ -8646,6 +10016,7 @@ function renderMusicOffline(opts) {
     audioReady = save.audioReady;
     MUS.duck = save.duck; MUS.bus = save.bus; MUS.gDrum = save.gDrum;
     MUS.gBass = save.gBass; MUS.gBrass = save.gBrass; MUS.gLead = save.gLead;
+    MUS.dry = save.dry; MUS.phone = save.phone;
     MUS.on = save.on; MUS.mode = save.mode; MUS.pending = save.pending;
     MUS.bar = save.bar; MUS.slot = save.slot; MUS.notes = save.notes;
     MUS.log = save.log; MUS.logOn = save.logOn; MUS.introDone = save.introDone;
@@ -8789,6 +10160,17 @@ function onKeyDown(e) {
   keys[lk] = true;
   keys[code] = true;
 
+  /* while the phone is up the same keys drive RESCO BLOCKS instead of the
+     van: A/D or the arrows move, W / Up rotates, S / Down soft-drops (read
+     straight off keys[]), space hard-drops. P, R and M are untouched. */
+  if (jamPhoneActive() && GAME.state === 'PLAYING') {
+    if (lk === 'a' || k === 'ArrowLeft') { tetMove(-1); e.preventDefault(); return; }
+    if (lk === 'd' || k === 'ArrowRight') { tetMove(1); e.preventDefault(); return; }
+    if (lk === 'w' || k === 'ArrowUp') { tetRotate(); e.preventDefault(); return; }
+    if (k === ' ' || code === 'Space') { tetHardDrop(); e.preventDefault(); return; }
+    if (lk === 's' || k === 'ArrowDown') { e.preventDefault(); return; }
+  }
+
   if (lk === 'a' || k === 'ArrowLeft') { requestLane(-1); e.preventDefault(); }
   else if (lk === 'd' || k === 'ArrowRight') { requestLane(1); e.preventDefault(); }
   else if (lk === 'p' || k === 'Escape') { togglePause(); e.preventDefault(); }
@@ -8842,6 +10224,16 @@ function screenDown(x, y, target) {
 function screenMove(x, y) {
   if (!SW.on || SW.moved) return;
   var dx = x - SW.x, dy = y - SW.y;
+  /* during the phone game a swipe DOWN is the hard drop, and a sideways
+     swipe still moves the piece */
+  if (jamPhoneActive()) {
+    if (dy > 46 && dy > Math.abs(dx) * 1.1) { SW.moved = true; tetHardDrop(); return; }
+    if (Math.abs(dx) > 34 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+      SW.moved = true;
+      tetMove(dx > 0 ? 1 : -1);
+    }
+    return;
+  }
   if (Math.abs(dx) > 34 && Math.abs(dx) > Math.abs(dy) * 1.1) {
     SW.moved = true;
     doLaneInput(dx > 0 ? 1 : -1);
@@ -8854,11 +10246,13 @@ function screenUp(x) {
   // tap fallback: left half / right half of the screen
   if (GAME.state === 'TITLE') { startRun(); return; }
   if (GAME.state !== 'PLAYING') return;
+  if (jamPhoneActive()) { tetRotate(); return; }   // a tap turns the piece
   doLaneInput(x < window.innerWidth * 0.5 ? -1 : 1);
 }
 function doLaneInput(dir) {
   if (GAME.state === 'TITLE') { startRun(); return; }
   if (GAME.state !== 'PLAYING') return;
+  if (jamPhoneActive()) { tetMove(dir); return; }
   requestLane(dir);
 }
 
@@ -8922,6 +10316,8 @@ function bindInput() {
     else if (GAME.state === 'PLAYING') honk();
   });
   bindTapButton($('tPause'), function () { togglePause(); });
+  bindTapButton($('tRot'), function () { if (jamPhoneActive()) tetRotate(); });
+  bindTapButton($('tDrop'), function () { if (jamPhoneActive()) tetHardDrop(); });
 
   function uiBtn(id, fn) {
     var el = $(id);
@@ -8962,6 +10358,7 @@ function onResize() {
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   document.documentElement.style.setProperty('--hs', hudScale().toFixed(3));
+  invalidateHudRects();          // the HUD panels just moved
 }
 
 /* ================================================================
@@ -8986,7 +10383,9 @@ var GAME = {
   finishTime: 0, sinceFinish: 0, resultsShown: false,
   honkCd: 0, seed: 1, elapsedSincePuff: 0, crossed: false,
   jumpFlags: [false, false, false],
-  finPhase: 0, finT: 0, camPush: 0, camPushT: 0, rageCam: 0, secondRage: false, quip: ''
+  finPhase: 0, finT: 0, camPush: 0, camPushT: 0, rageCam: 0, secondRage: false, quip: '',
+  // banked from the phone mini-game, added to the final score
+  tetScore: 0, tetLines: 0
 };
 var BEST_KEY = 'rescoRunBest_v1';
 
@@ -9022,6 +10421,7 @@ var QUIPS = ['«Sin factura no hay paso.»', '«Papeles, por favor.»',
 /* ---------------- lane handling ---------------- */
 function requestLane(dir) {
   if (GAME.state !== 'PLAYING') return;
+  if (jamLockSteering()) return;                    // the jam drives itself
   if (GAME.slip > 0) { SFX.slip(); return; }        // no steering on an oil slick
   var target = clamp(GAME.lane + dir, 0, CFG.LANES - 1);
   if (target === GAME.lane && GAME.laneT >= 1) return;
@@ -9205,6 +10605,9 @@ function resetRun(newSeed) {
   resetCustoms();
   resetDriver();
   resetVanDamage();               // doors shut, spilled boxes + paperwork gone
+  resetBoostFlames();             // the mufflers are cold again
+  GAME.tetScore = 0; GAME.tetLines = 0;
+  jamReset();                     // jam cars gone, cab view down, Tetris wiped
 
   van.position.set(GAME.x, 0, -GAME.dist);
   vanBody.rotation.set(0, 0, 0);
@@ -9234,6 +10637,7 @@ function beginRun() {
   $('hud').className = 'on';
   GAME.state = 'PLAYING';
   resetRun((Math.random() * 0x7fffffff) | 0);
+  jamPrepare();                   // counts the run, and arms the jam on a 3rd
   GAME.speed = CFG.V_CRUISE * 0.55;
   updateTouchUI();
   teachLaneButtons();
@@ -9276,7 +10680,9 @@ function updateTouchUI() {
   if (!el) return;
   if (!IS_TOUCH) { el.className = ''; return; }
   if (GAME.state === 'TITLE') el.className = 'on title';
-  else if (GAME.state === 'PLAYING') el.className = 'on';
+  // the phone view swaps BOCINA for the ROTAR / CAER pair, in a row of their
+  // own above the lane buttons, so nothing sits over the handset
+  else if (GAME.state === 'PLAYING') el.className = jamPhoneActive() ? 'on jam' : 'on';
   else el.className = '';
 }
 /* pulse the lane buttons a couple of times at the start of a run */
@@ -9321,7 +10727,8 @@ function computeScore() {
   // coinPts already carries the streak multiplier, so a clean run of trails
   // is worth far more than the same coins picked up in dribs and drabs
   return Math.max(0, base + GAME.coinPts + GAME.boosts * 160 + GAME.dodged * 30 +
-                       GAME.nearMiss * 50 + GAME.perfects * 500 - GAME.hits * 250);
+                       GAME.nearMiss * 50 + GAME.perfects * 500 - GAME.hits * 250 +
+                       (GAME.tetScore || 0));
 }
 
 /* ---------------------------------------------------------------------------
@@ -9371,6 +10778,18 @@ function showResults() {
   $('rBoosts').textContent = GAME.boosts;
   $('rHits').textContent = GAME.hits;
   $('rDodge').textContent = GAME.dodged;
+  /* the phone mini-game only earns a line on the card if it was played */
+  var tetRow = $('rTetRow');
+  if (tetRow) {
+    if (GAME.tetLines > 0 || GAME.tetScore > 0) {
+      $('rTetLbl').textContent = 'RESCO BLOCKS · ' + GAME.tetLines +
+                                 (GAME.tetLines === 1 ? ' LÍNEA' : ' LÍNEAS');
+      $('rTet').textContent = '+' + GAME.tetScore.toLocaleString();
+      tetRow.className = 'rrow on';
+    } else {
+      tetRow.className = 'rrow';
+    }
+  }
   $('rScore').textContent = computeScore().toLocaleString();
   $('rBest').textContent = isNew ? fmtTime(GAME.finishTime) : fmtTime(best);
   $('newBest').className = isNew ? 'on' : '';
@@ -9575,6 +10994,9 @@ function slipOn(o) {
 }
 
 function updateObstacles(dt) {
+  /* the traffic-jam interlude is a cut-scene: nothing on the road can hurt
+     you, and nothing counts as a near miss, for its whole duration */
+  var jamSafe = jamNoCollide();
   for (var i = activeObs.length - 1; i >= 0; i--) {
     var o = activeObs[i];
     var u = o.userData;
@@ -9641,14 +11063,14 @@ function updateObstacles(dt) {
        that the two silhouettes overlap on screen but not close enough to
        touch. Airborne fly-overs do not count - clearing something by flying
        over it is already its own reward. */
-    if (!u.hit && !u.near && u.type !== 'oil' && dz < 0 && dz > -(u.halfL + 3.05) && !GAME.airborne) {
+    if (!jamSafe && !u.hit && !u.near && u.type !== 'oil' && dz < 0 && dz > -(u.halfL + 3.05) && !GAME.airborne) {
       u.near = true;
       var lat = Math.abs(o.position.x - GAME.x);
       if (lat >= u.halfW + 1.28 && lat < u.halfW + 1.28 + CFG.LANE_W * 0.6) nearMiss(o);
     }
 
-    // collision (skipped while flying over things)
-    if (!u.hit && Math.abs(dz) < u.halfL + 3.05) {
+    // collision (skipped while flying over things, and through the interlude)
+    if (!jamSafe && !u.hit && Math.abs(dz) < u.halfL + 3.05) {
       var def = OBST_DEFS[u.type];
       var gy = hasGround(u.d) ? roadHeightAt(u.d) : 0;
       if (GAME.y - gy < def.height + 0.35) {
@@ -9683,7 +11105,7 @@ function updateBoosts(dt) {
       g.position.y = 0.8 + Math.sin(ph) * 0.28;
       g.material.opacity = u.used ? 0.0 : (0.35 + 0.3 * (0.5 + 0.5 * Math.sin(ph * 1.7)));
     }
-    if (!u.used && Math.abs(dz) < 4.0 && Math.abs(b.position.x - GAME.x) < 2.45 &&
+    if (!u.used && !jamNoBoost() && Math.abs(dz) < 4.0 && Math.abs(b.position.x - GAME.x) < 2.45 &&
         (GAME.y - roadHeightAt(u.d)) < 1.6) {
       u.used = true;
       b.visible = false;
@@ -9716,6 +11138,10 @@ function updateBoosts(dt) {
 
 /* ---------------- main physics step ---------------- */
 function stepPlaying(dt) {
+  /* THE INTERLUDE'S DEAD ZONE. From the moment the van halts behind the jam
+     to the moment the chase camera comes back, the run clock does not
+     advance: the player is not charged for the phone game. */
+  if (jamHolding()) { stepJamHold(dt); return; }
   GAME.time += dt;
   GAME.honkCd = Math.max(0, GAME.honkCd - dt);
   GAME.invuln = Math.max(0, GAME.invuln - dt);
@@ -9730,7 +11156,14 @@ function stepPlaying(dt) {
      slow and legible and the closing third is the flat-out one. A boost pad
      may still shove the van past it; drag pulls it back down afterwards. */
   var cap = speedCapAt(GAME.dist);
-  if (!GAME.airborne) {
+  /* THE JAM OVERRIDES THE THROTTLE. While the van is braking into the jam the
+     driver has no say at all, and - crucially - the V_MIN floor is lifted:
+     V_MIN is 14 u/s, so with it in place the van could never crawl, let alone
+     stop, and would simply idle forward through the stopped traffic. The floor
+     comes back in over the first ~0.6 s of the release. */
+  var jamBrake = (JAM.phase === 'APPROACH');
+  var jamFloor = (jamBrake || JAM.phase === 'RELEASE') ? 0 : CFG.V_MIN;
+  if (!GAME.airborne && !jamBrake) {
     if (brk) {
       GAME.speed -= CFG.BRAKE * dt;
     } else if (acc) {
@@ -9742,7 +11175,40 @@ function stepPlaying(dt) {
     if (GAME.speed > cap) GAME.speed -= (GAME.speed - cap) * 1.25 * dt;
   }
   if (!isFinite(GAME.speed)) GAME.speed = CFG.V_CRUISE;
-  GAME.speed = clamp(GAME.speed, CFG.V_MIN, CFG.V_BOOST_MAX);
+  GAME.speed = clamp(GAME.speed, jamFloor, CFG.V_BOOST_MAX);
+
+  /* ---- the traffic-jam interlude, the two phases that still move ---------
+     APPROACH: brake down a sqrt profile so the van always lands on the stop
+     line whatever speed it arrived at, hold a ~3 u/s crawl for the last few
+     units, then stop dead behind the last car and hand over to STOPPED.
+     RELEASE: normal driving again; the phase just times itself out.       */
+  if (JAM.phase === 'APPROACH') {
+    JAM.t += dt;
+    var jrem = JAM.stopD - GAME.dist;
+    if (jrem > 0.5) {
+      var jv = Math.sqrt(2 * 26 * jrem);
+      if (GAME.speed > jv) GAME.speed = jv;
+      GAME.speed = Math.max(GAME.speed, Math.min(3, jrem * 1.4));
+      if (JAM.t > 26) GAME.dist = JAM.stopD - 1;         // backstop
+    } else {
+      GAME.speed = damp(GAME.speed, 0, 12, dt);
+      if (GAME.speed < 0.6) {
+        GAME.speed = 0;
+        GAME.dist = JAM.stopD;
+        jamSetPhase('STOPPED');
+      }
+    }
+    if (JAM.slapT > 0) JAM.slapT = Math.max(0, JAM.slapT - dt);
+    jamHonkAmbience(dt);
+  } else if (JAM.phase === 'RELEASE') {
+    JAM.t += dt;
+    // pull back up to cruise instead of crawling out of the jam
+    if (GAME.speed < CFG.V_CRUISE) GAME.speed = Math.min(CFG.V_CRUISE, GAME.speed + 26 * dt);
+    if (JAM.t > 4.6) jamSetPhase('');
+  } else if (JAM.armed && !JAM.fired && !GAME.airborne && GAME.dist >= JAM.d) {
+    jamBegin();
+  }
+
   if (GAME.airborne) enforceFlight();
   GAME.dist += GAME.speed * dt;
 
@@ -9832,6 +11298,7 @@ function stepPlaying(dt) {
   updateCoins(dt);
   updatePickups(dt);
   updateWarns();
+  if (JAM.phase !== '') jamUpdateCars(dt);
   GAME.noLines = Math.max(0, GAME.noLines - dt);
   if (WORLD_T - GAME.lastChainAt > CHAIN_WINDOW) GAME.boostChain = 0;
 
@@ -10094,10 +11561,27 @@ function updateVanVisual(dt) {
   updateDriver(dt);
   updateVanDoors(dt);
   updateVanGold(dt);
+  updateBoostFlames(dt);
 }
 
 /* ---------------- camera ---------------- */
+/* the first-person cab: the eye point is an Object3D bolted into the driver's
+   seat, so the camera simply inherits the van's own transform */
+var _fpP = null, _fpQ = null, _fpS = null;
+function jamFpCamera(dt) {
+  if (!_fpP) { _fpP = new THREE.Vector3(); _fpQ = new THREE.Quaternion(); _fpS = new THREE.Vector3(); }
+  vanBody.updateMatrixWorld(true);
+  fpCamAnchor.updateMatrixWorld(true);
+  fpCamAnchor.matrixWorld.decompose(_fpP, _fpQ, _fpS);
+  camera.position.copy(_fpP);
+  camera.quaternion.copy(_fpQ);
+  camera.fov = damp(camera.fov, 62, 9, dt);
+  camera.updateProjectionMatrix();
+  fpLayout();
+  fpAnimate(dt);
+}
 function updateCamera(dt) {
+  if (JAM.fp && fpCamAnchor) { jamFpCamera(dt); return; }
   var spdF = clamp(GAME.speed / CFG.V_BOOST_MAX, 0, 1);
   // portrait phones need a wider, higher chase view to see the lanes at all
   var portrait = window.innerHeight > window.innerWidth * 1.05;
@@ -10357,6 +11841,18 @@ function frame(dt, tAbs) {
   updateTeach(dt);
   if (GAME.state !== 'PAUSED') updateHUD(false);
 
+  /* the phone screen. Repainted whenever the board changed, and otherwise at
+     ~30 Hz for the ghost / flash animation - a 640x360 upload every single
+     frame is not worth the bus traffic. */
+  if (JAM.fp && TET_CTX) {
+    TET.drawAcc += dt;
+    if (TET.dirty || TET.drawAcc > 0.033) {
+      tetDraw();
+      TET.drawAcc = 0;
+      TET.dirty = false;
+    }
+  }
+
   if (GAME.state === 'PLAYING' || GAME.state === 'FINISHED') {
     // pitch is tied to the WHOLE speed range, idle to boost ceiling, so the
     // engine note is a readable instrument rather than a background hum
@@ -10417,6 +11913,9 @@ function debugTeleport(d) {
   if (policeTruck) policeTruck.visible = false;
   if (heliRig) heliRig.visible = false;
   GAME.nextWhoosh = Math.ceil((d - 40) / 90) * 90 + 40;
+  /* a teleport PAST the traffic-jam anchor consumes it instead of firing the
+     whole set-piece the instant the van lands on the far side of it */
+  if (JAM.armed && !JAM.fired && d >= JAM.d) JAM.fired = true;
   streamCourse(GAME.dist);
   van.position.set(GAME.x, GAME.y, -GAME.dist);
   camera.position.set(GAME.x, GAME.y + 5.2, -GAME.dist + 13);
@@ -10468,6 +11967,8 @@ function boot() {
   buildBridge();
   buildVan();
   buildDriver();
+  tetInit();                 // the phone's CanvasTexture, before the cab uses it
+  buildFirstPerson();
   initObstacles();
   initCoins();
   initParticles();
@@ -10641,6 +12142,84 @@ function boot() {
           boxPool: cargoPool.length, paperPool: paperPool.length
         };
       },
+      /* ---- the muffler flames ---- */
+      get flames() {
+        return { on: FLAME.on, len: +FLAME.len.toFixed(3), pipes: flameRigs.length,
+                 visible: flameRigs.length ? !!flameRigs[0].visible : false,
+                 layers: flameRigs.length ? flameRigs[0].children.length : 0,
+                 chain: GAME.boostChain, boostTime: +GAME.boostTime.toFixed(2) };
+      },
+      /* ---- the traffic-jam interlude ---- */
+      get jamState() {
+        return {
+          mode: !!CFG.JAM_MODE, everyN: CFG.JAM_EVERY_N_RUNS,
+          goal: CFG.JAM_ROWS_TO_CLEAR, urlFlag: JAM_URL, forceNext: jamForceNext,
+          armed: JAM.armed, fired: JAM.fired,
+          phase: JAM.phase, stage: jamStage(), t: +JAM.t.toFixed(2), beat: JAM.beat,
+          d: Math.round(JAM.d), stopD: Math.round(JAM.stopD),
+          front: Math.round(JAM.frontMax), clearUntil: Math.round(JAM.clearUntil),
+          cars: jamLive.length, fp: JAM.fp, fade: +JAM.fade.toFixed(3),
+          clockPaused: jamHolding(), runs: loadRunCount(),
+          tetScore: GAME.tetScore, tetLines: GAME.tetLines,
+          sparse: SPARSE_RANGES.length,
+          tetris: { lines: TET.lines, score: TET.score, level: TET.level,
+                    done: !!TET.done, tops: TET.tops, cur: TET.cur, next: TET.next,
+                    rot: TET.rot, x: TET.px, y: TET.py, flash: +TET.flash.toFixed(2) }
+        };
+      },
+      forceJam: function () { jamForceNext = true; return true; },
+      /* where the cab rig and the handset actually are, in world and in NDC.
+         Lets a test prove the phone is on screen and how much of it it fills. */
+      fpDebug: function () {
+        if (!fpHandRig || !fpScreenMesh) return null;
+        var wp = new THREE.Vector3(), sp = new THREE.Vector3();
+        fpHandRig.updateWorldMatrix(true, true);
+        fpHandRig.getWorldPosition(wp);
+        var bb = new THREE.Box3().setFromObject(fpScreenMesh);
+        var corners = [
+          new THREE.Vector3(bb.min.x, bb.min.y, bb.min.z),
+          new THREE.Vector3(bb.max.x, bb.max.y, bb.max.z)
+        ];
+        var ndc = corners.map(function (c) { var v = c.clone().project(camera); return { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) }; });
+        fpScreenMesh.getWorldPosition(sp);
+        return {
+          fp: JAM.fp,
+          rigVisible: !!fpHandRig.visible, cabVisible: !!fpCabRig.visible,
+          scale: +fpHandRig.scale.x.toFixed(4),
+          localY: +fpHandRig.position.y.toFixed(4), localZ: +fpHandRig.position.z.toFixed(4),
+          rigWorld: { x: +wp.x.toFixed(2), y: +wp.y.toFixed(2), z: +wp.z.toFixed(2) },
+          screenWorld: { x: +sp.x.toFixed(2), y: +sp.y.toFixed(2), z: +sp.z.toFixed(2) },
+          camWorld: { x: +camera.position.x.toFixed(2), y: +camera.position.y.toFixed(2), z: +camera.position.z.toFixed(2) },
+          distToCam: +camera.position.distanceTo(sp).toFixed(3),
+          fov: +camera.fov.toFixed(1), aspect: +camera.aspect.toFixed(3),
+          screenNDC: ndc,
+          screenLive: !!(TET_TEX && TET_TEX.image && fpScreenMesh.material.map === TET_TEX),
+          screenSize: TET_TEX && TET_TEX.image ? [TET_TEX.image.width, TET_TEX.image.height] : null,
+          driverVisible: !!(driverRig && driverRig.visible),
+          wsVisible: !!(vanWindshield && vanWindshield.visible)
+        };
+      },
+      get runs() { return loadRunCount(); },
+      setRuns: function (n) { saveRunCount(Math.max(0, (+n) | 0)); return loadRunCount(); },
+      /* drive RESCO BLOCKS from a harness */
+      tetris: {
+        move: function (d) { return tetMove(d < 0 ? -1 : 1); },
+        rotate: function () { return tetRotate(); },
+        drop: function () { return tetHardDrop(); },
+        soft: function (on) { TET.softBtn = !!on; return TET.softBtn; },
+        reset: function () { tetReset(); return true; },
+        state: function () {
+          if (!TET.grid) return null;
+          var rows = [];
+          for (var y = 0; y < TET_H; y++) rows.push(TET.grid[y].slice());
+          return { W: TET_W, H: TET_H, cell: TET_CELL, grid: rows,
+                   cur: TET.cur, next: TET.next, rot: TET.rot, x: TET.px, y: TET.py,
+                   cells: TET.cur ? tetCells(TET.cur, TET.rot) : [],
+                   ghostY: TET.cur ? tetGhostY() : -1,
+                   lines: TET.lines, score: TET.score, level: TET.level,
+                   done: !!TET.done, tops: TET.tops, flash: +TET.flash.toFixed(2) };
+        }
+      },
       get touch() { return IS_TOUCH; },
       get mobile() { return IS_MOBILE; },
       get dpr() { return pixelRatio(); },
@@ -10665,6 +12244,11 @@ function boot() {
                  nextT: MUS.nextT, level: MUS.bus ? MUS.bus.gain.value : null,
                  mix: { drum: MUS_MIX.drum, bass: MUS_MIX.bass,
                         brass: MUS_MIX.brass, lead: MUS_MIX.lead },
+                 /* the two ways out of the duck bus: `dry` is the room and
+                    `phone` is the 600-3000 Hz handset speaker the band goes
+                    down during the traffic-jam interlude */
+                 dry: MUS.dry ? +MUS.dry.gain.value.toFixed(4) : null,
+                 phone: MUS.phone ? +MUS.phone.gain.value.toFixed(4) : null,
                  master: MASTER_LEVEL };
       },
       /* render the SAME scheduler into an OfflineAudioContext. The samples are
