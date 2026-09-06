@@ -546,6 +546,74 @@ body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebt
 #rTetRow{display:none}
 #rTetRow.on{display:flex}
 #rTetRow b{color:var(--blue-d)}
+
+/* ---------- THE BOOST BUTTON + ITS NITRO CHARGE --------------------------
+   BOCINA became BOOST. Uncharged it is grey and pressing it still honks, so
+   the horn is not lost; charged it turns RED, glows, and burns. The flame is
+   its own element rather than a pseudo-element so it can sit ABOVE the
+   button's translucent background and BELOW the label, which keeps the word
+   readable (white, dark stroke) while it is on fire. */
+.tbtn .lbl{position:relative;z-index:2;pointer-events:none}
+.tbtn .fire{
+  display:none;position:absolute;left:-7px;right:-7px;top:-11px;bottom:-5px;z-index:1;
+  border-radius:22px;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 92%,
+     rgba(255,246,200,.98) 0%, rgba(255,196,60,.92) 17%,
+     rgba(255,122,0,.76) 38%, rgba(216,52,20,.44) 60%, rgba(216,52,20,0) 80%);
+  animation:rrFire .26s steps(2,end) infinite;
+}
+#tHonk{color:rgba(226,228,234,.86)}
+#tHonk .lbl{letter-spacing:2px}
+.tbtn.nitro{
+  background:rgba(150,20,8,.55);border-color:rgba(255,140,50,.92);color:#fff;
+  animation:rrGlow .6s ease-in-out infinite alternate;
+}
+.tbtn.nitro .lbl{color:#fff;-webkit-text-stroke:0.05em #14181F;paint-order:stroke fill;
+  text-shadow:0 0 9px rgba(255,180,60,.95)}
+.tbtn.nitro .fire{display:block}
+@keyframes rrFire{
+  0%{transform:scaleY(1) translateY(0);opacity:.95}
+  33%{transform:scaleY(1.18) translateY(-3px);opacity:.72}
+  66%{transform:scaleY(.90) translateY(2px);opacity:1}
+  100%{transform:scaleY(1.07) translateY(-1px);opacity:.85}
+}
+@keyframes rrGlow{
+  from{box-shadow:0 0 0 2px rgba(255,255,255,.45) inset,0 0 12px 2px rgba(255,90,20,.75),0 4px 0 rgba(20,24,31,.30)}
+  to{box-shadow:0 0 0 2px rgba(255,255,255,.65) inset,0 0 30px 9px rgba(255,150,40,.95),0 4px 0 rgba(20,24,31,.30)}
+}
+/* a mouse-driven desktop has no BOCINA button, so the same two states get a
+   small indicator of their own, right above the TURBO bar */
+#nitroInd{
+  display:none;position:relative;align-items:center;justify-content:center;
+  margin:0 0 7px auto;width:112px;height:27px;border-radius:11px;
+  background:rgba(20,24,31,.72);border:3px solid var(--ink);
+  box-shadow:0 3px 0 rgba(0,0,0,.4);
+  color:rgba(226,228,234,.82);letter-spacing:2.5px;line-height:1;
+  font-size:max(12px, calc(11px / var(--hs)));
+}
+body:not(.touch) #nitroInd{display:flex}
+#nitroInd .fire{
+  display:none;position:absolute;left:-6px;right:-6px;top:-9px;bottom:-4px;z-index:1;
+  border-radius:16px;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 92%,
+     rgba(255,246,200,.98) 0%, rgba(255,196,60,.92) 17%,
+     rgba(255,122,0,.76) 38%, rgba(216,52,20,.44) 60%, rgba(216,52,20,0) 80%);
+  animation:rrFire .26s steps(2,end) infinite;
+}
+#nitroInd .lbl{position:relative;z-index:2}
+#nitroInd.on{background:rgba(150,20,8,.60);border-color:rgba(255,140,50,.95);color:#fff;
+  animation:rrGlow .6s ease-in-out infinite alternate}
+#nitroInd.on .fire{display:block}
+#nitroInd.on .lbl{-webkit-text-stroke:0.05em #14181F;paint-order:stroke fill;
+  text-shadow:0 0 9px rgba(255,180,60,.95)}
+
+/* the SUPER BOOST line on the results card: only there if one was fired */
+#rSuperRow{display:none}
+#rSuperRow.on{display:flex}
+#rSuperRow b{color:var(--orange-d)}
+
+/* which run this is, on the title card */
+#runLine{margin-top:9px;font-size:min(3.6vw,14px);letter-spacing:3px;color:#7A6A55}
 </style>
 </head>
 <body>
@@ -590,6 +658,7 @@ body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebt
   </div>
 
   <div id="boostBox">
+    <div id="nitroInd"><span class="fire"></span><span class="lbl">BOOST</span></div>
     <div id="boostLbl">TURBO</div>
     <div id="boostTrack"><div id="boostFill"></div></div>
   </div>
@@ -608,7 +677,7 @@ body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebt
   <div id="touchHint">Toca <b>&#9664;</b> <b>&#9654;</b> o desliza para cambiar de carril</div>
   <button class="tbtn" id="tPause" type="button" aria-label="Pausa">II</button>
   <button class="tbtn" id="tLeft" type="button" aria-label="Carril izquierdo">&#9664;</button>
-  <button class="tbtn" id="tHonk" type="button" aria-label="Bocina">BOCINA</button>
+  <button class="tbtn" id="tHonk" type="button" aria-label="Boost"><span class="fire"></span><span class="lbl">BOOST</span></button>
   <button class="tbtn" id="tRight" type="button" aria-label="Carril derecho">&#9654;</button>
   <!-- only visible during the RESCO BLOCKS phone interlude -->
   <button class="tbtn" id="tRot" type="button" aria-label="Girar pieza">ROTAR</button>
@@ -630,11 +699,12 @@ body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebt
     </div>
     <div class="sub">DE M&Eacute;XICO A USA &nbsp;&middot;&nbsp; LA CARRERA DEL PUENTE</div>
     <div class="tricolor"></div>
+    <div id="runLine">Carrera 1</div>
     <div class="rule"></div>
     <div class="keys">
       <div class="key"><span class="kcap">A</span><span class="kcap">D</span> / <span class="kcap">&larr;</span><span class="kcap">&rarr;</span> CAMBIAR DE CARRIL</div>
       <div class="key"><span class="kcap">W</span> ACELERAR &nbsp; <span class="kcap">S</span> FRENAR</div>
-      <div class="key"><span class="kcap">ESPACIO</span> BOCINA</div>
+      <div class="key"><span class="kcap">ESPACIO</span> BOCINA / BOOST</div>
       <div class="key"><span class="kcap">P</span> PAUSA &nbsp; <span class="kcap">R</span> REINICIAR &nbsp; <span class="kcap">M</span> M&Uacute;SICA</div>
     </div>
     <div class="blink">TOCA PARA EMPEZAR</div>
@@ -679,6 +749,7 @@ body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebt
       <div class="rrow"><span>TURBOS</span><b id="rBoosts">0</b></div>
       <div class="rrow"><span>GOLPES</span><b id="rHits">0</b></div>
       <div class="rrow"><span>ESQUIVADOS</span><b id="rDodge">0</b></div>
+      <div class="rrow" id="rSuperRow"><span>S&Uacute;PER BOOST</span><b id="rSuper">0 choques</b></div>
       <div class="rrow" id="rTetRow"><span id="rTetLbl">RESCO BLOCKS</span><b id="rTet">+0</b></div>
       <div class="rrow hi"><span>PUNTOS</span><b id="rScore">0</b></div>
     </div>
@@ -755,6 +826,19 @@ try {
   else if (/[?&]jam=0(?:&|$)/.test(_jq)) JAM_URL = -1;
 } catch (eJ) { JAM_URL = 0; }
 var jamForceNext = false;         // one-shot, set by __RR.forceJam()
+/* ?jam=1 is ONE-SHOT and is never persisted: it forces the interlude for the
+   FIRST run of this page load and nothing else. ?jam=0 disables it for this
+   page load only. Neither ever touches localStorage. */
+var jamUrlOnce = (JAM_URL === 1);
+
+/* ---------------- ?mute=1 : silence EVERYTHING -------------------------
+   Every sound in the game - engine, SFX and the whole band - lands on
+   masterGain, so muting is one number. It is a TEST flag: the game never sets
+   it, and once it is on nothing unmutes it except __RR.setMute(false). */
+var MUTE_ALL = false;
+try {
+  if (/[?&]mute=1(?:&|$)/.test('' + (window.location.search || ''))) MUTE_ALL = true;
+} catch (eMU) { MUTE_ALL = false; }
 
 /* ================================================================
    1. CONFIG / CONSTANTS
@@ -836,9 +920,10 @@ var CFG = {
 
   /* --- THE TRAFFIC-JAM INTERLUDE ------------------------------------------
      ONE toggle: JAM_MODE false and the whole feature does not exist. The run
-     counter lives in localStorage 'rr_runs' and counts runs that have
-     STARTED, so quitting a run still spends it. Runs 1 and 2 are normal, run
-     3 gets the jam and the counter resets - so run 6 gets it again. */
+     counter lives in localStorage 'rr_runs_done' and counts runs that have
+     been COMPLETED (arriveUSA), so quitting a run costs nothing. Runs 1 and 2
+     finish normally, the third one gets the jam, 4 and 5 are normal, 6 gets
+     it again: the run that STARTS while rr_runs_done % 3 === 2. */
   JAM_MODE: true,
   JAM_EVERY_N_RUNS: 3,
   JAM_ROWS_TO_CLEAR: 5
@@ -851,6 +936,11 @@ CFG.ROAD_W    = CFG.LANES * CFG.LANE_W;                   // 17.6
 CFG.ROAD_HALF = CFG.ROAD_W * 0.5;
 CFG.DECK_W    = CFG.ROAD_W + 5.2;
 CFG.KMH_MAX   = Math.round(CFG.V_BOOST_MAX * CFG.KMH);    // HUD ceiling
+/* THE SUPER BOOST CEILING. One rare NITRO canister per run buys ~4 s at 1.6x
+   the boost ceiling; the dial is allowed up there, and only up there, for as
+   long as it lasts. */
+CFG.V_SUPER_MAX = Math.round(CFG.V_BOOST_MAX * 1.6);      // 189
+CFG.KMH_SUPER   = Math.round(CFG.V_SUPER_MAX * CFG.KMH);  // 473
 /* --- the real Del Río / Ciudad Acuña International Bridge ------------------
    A LOW, FLAT, four-lane concrete girder bridge on piers, with a separate
    pedestrian walkway behind a railing on each side. Not a suspension bridge:
@@ -3676,6 +3766,16 @@ function makeFlameJet() {
     collar.userData.noOutline = true;
     g.add(collar);
   }
+  /* the SUPER BOOST core: a second, unlit WHITE cone down the middle of the
+     jet, only ever on while the super boost is burning */
+  var sup = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.86, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
+  sup.rotation.x = Math.PI / 2;
+  sup.position.z = 0.43;
+  sup.userData.noOutline = true;
+  sup.visible = false;
+  g.add(sup);
+  g.userData.superCore = sup;
   g.visible = false;
   g.scale.set(1, 1, 0.001);
   return g;
@@ -3687,7 +3787,8 @@ function flameHash(i, n) {
 }
 function updateBoostFlames(dt) {
   if (!flameRigs.length) return;
-  var live = GAME.state === 'PLAYING' && GAME.boostTime > 0;
+  var sup = GAME.superT > 0;
+  var live = GAME.state === 'PLAYING' && (GAME.boostTime > 0 || sup);
   var i, q;
   if (live && !FLAME.on) {
     FLAME.on = true;
@@ -3708,12 +3809,18 @@ function updateBoostFlames(dt) {
     }
   }
   var chain = clamp(GAME.boostChain || 1, 1, 3);
-  var want = live ? (0.60 + (chain - 1) * 0.32) : 0;
+  /* a full x3 chain reaches 0.92; the super boost goes to 1.90, i.e. a plume
+     just over TWICE as long, twice as wide, with a white core inside it */
+  var want = live ? (sup ? 1.90 : (0.60 + (chain - 1) * 0.32)) : 0;
   FLAME.len = damp(FLAME.len, want, live ? 26 : 22, dt);
   if (FLAME.len < 0.02) {
     FLAME.len = 0;
     for (i = 0; i < flameRigs.length; i++) {
-      if (flameRigs[i].visible) { flameRigs[i].visible = false; flameRigs[i].scale.set(1, 1, 0.001); }
+      if (flameRigs[i].visible) {
+        flameRigs[i].visible = false;
+        flameRigs[i].scale.set(1, 1, 0.001);
+        if (flameRigs[i].userData.superCore) flameRigs[i].userData.superCore.visible = false;
+      }
     }
     return;
   }
@@ -3723,11 +3830,23 @@ function updateBoostFlames(dt) {
     var jet = flameRigs[i];
     jet.visible = true;
     var f = 0.8 + flameHash(i + 1, n) * 0.6;             // 0.8 - 1.4x
-    var w = 1 + (f - 1) * 0.35;
+    var w = (1 + (f - 1) * 0.35) * (sup ? 1.7 : 1);
     jet.scale.set(w, w, FLAME.len * FLAME_LEN * f);
+    if (jet.userData.superCore) jet.userData.superCore.visible = sup;
     // the plume curls UP a little as it leaves the pipe
     jet.rotation.x = -0.20 - FLAME.len * 0.07 + Math.sin(FLAME.t * 9 + i) * 0.03;
     jet.rotation.y = Math.sin(FLAME.t * 7.3 + i * 2.1) * 0.05;
+    // and while the super boost burns it throws embers out of the pipe
+    if (sup && Math.random() < (IS_MOBILE ? 0.35 : 0.85)) {
+      jet.getWorldPosition(tmpV);
+      emit({
+        x: tmpV.x + (Math.random() - 0.5) * 0.55, y: tmpV.y + Math.random() * 0.45, z: tmpV.z + 0.6,
+        vx: (Math.random() - 0.5) * 5, vy: 1.2 + Math.random() * 3.4, vz: 10 + Math.random() * 16,
+        life: 0.30 + Math.random() * 0.26, size: 0.10 + Math.random() * 0.12,
+        color: Math.random() > 0.6 ? 0xffffff : (Math.random() > 0.5 ? 0xffc23c : 0xff5a12),
+        grav: 5, spin: 9
+      });
+    }
   }
 }
 function resetBoostFlames() {
@@ -3736,6 +3855,7 @@ function resetBoostFlames() {
     flameRigs[i].visible = false;
     flameRigs[i].scale.set(1, 1, 0.001);
     flameRigs[i].rotation.set(0, 0, 0);
+    if (flameRigs[i].userData.superCore) flameRigs[i].userData.superCore.visible = false;
   }
 }
 
@@ -5077,48 +5197,124 @@ var fpHandsetParts = [];
    measured off the real DOM rectangles by fpMeasureReserve() */
 var FP_RESERVE = 0.09;
 
+/* A ROUNDED BOX, out of three interpenetrating slabs. Their union silhouettes
+   as a rectangle with bevelled corners, which is what a hand is made of and
+   what a plain box will never look like. The inverted-hull outlines of the
+   three are hidden inside each other everywhere except at the bevels, so the
+   ink stroke follows the rounded silhouette instead of drawing seams. */
+function fpRoundBox(w, h, d, r, mat, x, y, z) {
+  var g = new THREE.Group();
+  g.add(box(w, h - 2 * r, d - 2 * r, mat, 0, 0, 0));
+  g.add(box(w - 2 * r, h, d - 2 * r, mat, 0, 0, 0));
+  g.add(box(w - 2 * r, h - 2 * r, d, mat, 0, 0, 0));
+  g.position.set(x || 0, y || 0, z || 0);
+  return g;
+}
+
+/* ---------------------------------------------------------------------------
+   ONE HAND HOLDING THE PHONE IN LANDSCAPE, from the driver's own eyes.
+   side = -1 left hand / +1 right hand; +x is outboard for the right one.
+
+   What you actually see when you hold a handset in landscape is:
+     - a rounded PALM wrapped round the end of the phone, with the fleshy
+       thenar mound of the thumb on the front
+     - a two-joint THUMB lying on the front face, its pad on the bezel
+     - four FINGERS curled round the BACK, of which only the rounded FINGERTIPS
+       come over the top edge of the handset - never a row of sticks in front
+     - a WRIST, a red plaid shirt cuff, and a forearm running out of frame
+   Everything below the top edge of the phone and behind it is occluded by the
+   phone itself, which is exactly the point: what reads is tips, thumb, palm.
+   --------------------------------------------------------------------------- */
+var FP_THUMB_REST = -0.34, FP_THUMB_PRESS = 0.30;
 function fpHand(side) {
   var g = new THREE.Group();
-  var skin = toon(COL.skin), skinD = toon(COL.skinD), cuff = toon(0xC0392B);
-  // palm, wrapped round the end of the phone
-  var palm = box(0.17, 0.23, 0.20, skin, side * 0.02, -0.04, -0.03);
-  g.add(palm);
-  // four fingers curled round the BACK of the handset
-  for (var f = 0; f < 4; f++) {
-    var fin = box(0.135, 0.048, 0.075, skin, side * 0.005, 0.055 - f * 0.045, -0.115);
-    fin.userData.noOutline = true;
-    g.add(fin);
-    var kn = box(0.05, 0.042, 0.05, skinD, side * -0.045, 0.055 - f * 0.045, -0.088);
-    kn.userData.noOutline = true;
-    g.add(kn);
+  var skin = toon(COL.skin), skinD = toon(COL.skinD),
+      cuff = toon(0xC0392B), cuffD = toon(0x8E2A20);
+  var tips = [], parts = [];
+  var f, fy, fw;
+
+  // ---- the palm's inner mass, tucked behind the end of the handset
+  var palm = fpRoundBox(0.115, 0.215, 0.150, 0.030, skin, side * 0.008, -0.030, -0.020);
+  g.add(palm); parts.push(palm);
+  var backH = box(0.100, 0.170, 0.026, skinD, side * 0.008, -0.030, -0.088);
+  backH.userData.noOutline = true;
+  g.add(backH);
+
+  /* ---- THE FOUR FOLDED FINGERS, stacked down the OUTBOARD edge.
+     This is the read. Holding a phone in landscape, the only part of your hand
+     the phone does not hide is its outer edge - and what is on that edge is
+     four finger segments in a vertical stack, index at the top, pinky at the
+     bottom, each one a rounded pill with its own ink stroke between it and the
+     next. Four bumps in a column is a HAND; one slab is a block. */
+  for (f = 0; f < 4; f++) {
+    fy = 0.062 - f * 0.050;
+    fw = 0.078 - f * 0.005;
+    var seg = fpRoundBox(fw, 0.046, 0.150, 0.019, skin, side * 0.082, fy, -0.020);
+    g.add(seg); parts.push(seg);
   }
-  // two fingertips curling over the TOP edge of the handset, which is what
-  // makes a landscape grip read as a grip rather than as a block
-  for (var ft = 0; ft < 2; ft++) {
-    var tip = box(0.055, 0.05, 0.115, skin, side * (-0.03 - ft * 0.065), 0.105, 0.005);
-    tip.rotation.x = 0.30;
+
+  /* ---- and their TIPS, curled round the back and up over the top edge.
+     Everything between the outboard edge and the tips is behind the handset
+     and never drawn, which is exactly right: no finger sticks in front. */
+  for (f = 0; f < 4; f++) {
+    var tx = -side * (0.048 + f * 0.050);
+    var curl = box(0.044, 0.190, 0.052, skin, tx, 0.130, -0.058);
+    curl.userData.noOutline = true;
+    g.add(curl);
+    var knuck = box(0.046, 0.044, 0.050, skinD, tx, 0.222, -0.058);
+    knuck.userData.noOutline = true;
+    g.add(knuck);
+    var tip = fpRoundBox(0.050, 0.058, 0.066, 0.018, skin, tx, 0.262 - f * 0.006, -0.024);
+    tip.rotation.x = 0.40;
     g.add(tip);
+    tips.push(tip); parts.push(tip);
   }
-  // the thumb, resting on the front face beside the screen
+
+  /* ---- the thumb: two joints, lying across the FRONT face, pad on the bezel.
+     Its pivot is the outboard front corner; the metacarpal runs down and in,
+     and the distal joint bends further in so the pad lands on the very edge of
+     the screen, which is where a thumb actually rests. */
   var thumb = new THREE.Group();
-  thumb.position.set(side * -0.055, 0.03, 0.045);
-  var tb = box(0.062, 0.155, 0.06, skin, 0, -0.065, 0.02);
-  thumb.add(tb);
-  var tt = box(0.068, 0.06, 0.06, skinD, 0, -0.145, 0.032);
-  tt.userData.noOutline = true;
-  thumb.add(tt);
-  thumb.rotation.x = -0.35;
-  thumb.rotation.z = side * 0.22;
+  thumb.position.set(side * 0.022, 0.048, 0.028);
+  var meta = fpRoundBox(0.060, 0.125, 0.056, 0.019, skin, -side * 0.020, -0.058, 0);
+  meta.rotation.z = side * 0.40;
+  thumb.add(meta);
+  var joint = box(0.052, 0.030, 0.050, skinD, -side * 0.050, -0.106, 0);
+  joint.userData.noOutline = true;
+  thumb.add(joint);
+  var distal = new THREE.Group();
+  distal.position.set(-side * 0.062, -0.112, -0.002);
+  var tpad = fpRoundBox(0.066, 0.082, 0.054, 0.020, skin, -side * 0.022, -0.032, 0);
+  distal.add(tpad);
+  var nail = box(0.030, 0.034, 0.012, skinD, -side * 0.026, -0.046, 0.026);
+  nail.userData.noOutline = true;
+  distal.add(nail);
+  distal.rotation.z = side * 0.34;
+  thumb.add(distal);
+  thumb.rotation.x = FP_THUMB_REST;
   g.add(thumb);
-  // wrist + forearm, running down out of frame
-  var wrist = box(0.15, 0.13, 0.16, skin, side * 0.05, -0.19, -0.02);
-  g.add(wrist);
-  var sleeve = box(0.185, 0.10, 0.19, cuff, side * 0.075, -0.28, -0.02);
-  g.add(sleeve);
-  var arm = box(0.175, 0.44, 0.18, cuff, side * 0.13, -0.50, -0.03);
-  arm.rotation.z = side * -0.20;
+  parts.push(thumb);
+
+  // ---- wrist, his own red plaid shirt cuff, then the forearm out of frame
+  var wrist = fpRoundBox(0.118, 0.085, 0.128, 0.028, skin, side * 0.030, -0.172, -0.022);
+  g.add(wrist); parts.push(wrist);
+  var band = box(0.152, 0.072, 0.150, cuff, side * 0.042, -0.234, -0.024);
+  g.add(band);
+  for (var pb = -1; pb <= 1; pb += 2) {
+    var hstripe = box(0.156, 0.014, 0.154, cuffD, side * 0.042, -0.234 + pb * 0.020, -0.024);
+    hstripe.userData.noOutline = true;
+    g.add(hstripe);
+    var vstripe = box(0.017, 0.076, 0.154, cuffD, side * 0.042 + pb * 0.039, -0.234, -0.024);
+    vstripe.userData.noOutline = true;
+    g.add(vstripe);
+  }
+  var arm = box(0.156, 0.400, 0.152, cuff, side * 0.075, -0.460, -0.030);
+  arm.rotation.z = side * -0.18;
   g.add(arm);
+
   g.userData.thumb = thumb;
+  g.userData.tips = tips;
+  g.userData.frameParts = parts;
   return g;
 }
 
@@ -5238,13 +5434,16 @@ function buildFirstPerson() {
   fpHandRig.add(slot);
   fpHandsetParts = [shell, bezel, fpScreenMesh, slot];
 
-  var hL = fpHand(-1); hL.position.set(-(FP_SCREEN_W * 0.5 + 0.085), -0.03, -0.01);
-  var hR = fpHand(1);  hR.position.set(FP_SCREEN_W * 0.5 + 0.085, -0.03, -0.01);
+  var hL = fpHand(-1); hL.position.set(-(FP_SCREEN_W * 0.5 + 0.075), -0.03, -0.01);
+  var hR = fpHand(1);  hR.position.set(FP_SCREEN_W * 0.5 + 0.075, -0.03, -0.01);
   fpHandRig.add(hL); fpHandRig.add(hR);
   fpThumbL = hL.userData.thumb; fpThumbR = hR.userData.thumb;
   outlineAll(fpHandRig, 0.007);
-  fpHandsetParts.push(fpThumbL);
-  fpHandsetParts.push(fpThumbR);
+  /* WHAT THE FRAMING IS SOLVED AGAINST. The handset, both thumbs, all eight
+     fingertips, the palms and the wrists: everything the player has to be able
+     to SEE. Only the shirt cuffs and the forearms are left out, and those run
+     out of the bottom of the picture the way your own arms do. */
+  fpHandsetParts = fpHandsetParts.concat(hL.userData.frameParts, hR.userData.frameParts);
   fpMeasureRig();
 }
 
@@ -5272,7 +5471,7 @@ function fpMeasureRig() {
        0.006 world units and rolls it by up to ~0.024 rad, which walks the
        handset's corners a little past wherever fpLayout() parked them - so the
        box the framing is solved against is the measured one plus that. */
-    var FP_PAD = 0.03;
+    var FP_PAD = 0.022;
     FP_TOP = Math.max(0.05, bb.max.y) + FP_PAD;
     FP_BOT = Math.max(0.05, -bb.min.y) + FP_PAD;
     FP_HALF_X = Math.max(0.05, Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x))) + FP_PAD;
@@ -5315,7 +5514,9 @@ function fpLayout() {
   var wFull = hFull * aspect;
   var reserve = FP_RESERVE;          // the band the on-screen buttons own
   var topPad = 0.06;                 // and never touch the top edge either
-  var sidePad = 0.06;
+  /* 0.12 -> the rig's real left and right edges land at |x| <= 0.88 in NDC,
+     i.e. a visible margin inside the 0.92 the framing contract asks for. */
+  var sidePad = 0.12;
 
   /* PERSPECTIVE MATTERS HERE. The thumbs stand FP_FRONT toward the eye, so
      they sit in a SMALLER frustum cross-section than the screen plane does and
@@ -5369,8 +5570,9 @@ function fpAnimate(dt) {
   fpHandRig.position.y = fpHandRig.userData.baseY + Math.sin(t * 1.25) * 0.006;
   FP.thumbL = Math.max(0, FP.thumbL - dt * 7);
   FP.thumbR = Math.max(0, FP.thumbR - dt * 7);
-  if (fpThumbL) fpThumbL.rotation.x = -0.35 - FP.thumbL * 0.55;
-  if (fpThumbR) fpThumbR.rotation.x = -0.35 - FP.thumbR * 0.55;
+  /* the twitch is a PRESS: the thumb rolls down onto the bezel and comes back */
+  if (fpThumbL) fpThumbL.rotation.x = FP_THUMB_REST + FP.thumbL * FP_THUMB_PRESS;
+  if (fpThumbR) fpThumbR.rotation.x = FP_THUMB_REST + FP.thumbR * FP_THUMB_PRESS;
   if (fpRosary) {
     fpRosary.rotation.z = Math.sin(t * 1.5) * 0.11;
     fpRosary.rotation.x = Math.sin(t * 1.1 + 0.8) * 0.06;
@@ -5844,7 +6046,10 @@ function tetDraw() {
    streaming into the stretch they occupy while the interlude is running.
    ================================================================ */
 var JAM_APPROACH_LEN = 205;             // braking room between callout and stop
-var JAM_RUNS_KEY = 'rr_runs';
+/* COMPLETED runs, not started ones. The old 'rr_runs' key counted starts and
+   is deleted at boot; nothing ever reads it again. */
+var JAM_RUNS_KEY = 'rr_runs_done';
+var JAM_RUNS_LEGACY_KEY = 'rr_runs';
 var SPARSE_RANGES = [];                 // the ZONA TURBO stretches, per course
 var JAM = {
   armed: false, phase: '', t: 0, beat: 0, fired: false,
@@ -5853,28 +6058,41 @@ var JAM = {
 };
 var jamPool = {}, jamLive = [];
 
-function loadRunCount() {
+function loadRunsDone() {
   try {
     var v = window.localStorage.getItem(JAM_RUNS_KEY);
     var n = parseInt(v, 10);
     return (isFinite(n) && n >= 0) ? n : 0;
   } catch (e) { return 0; }
 }
-function saveRunCount(n) {
-  try { window.localStorage.setItem(JAM_RUNS_KEY, String(n)); } catch (e) { }
+function saveRunsDone(n) {
+  try { window.localStorage.setItem(JAM_RUNS_KEY, String(Math.max(0, n | 0))); } catch (e) { }
 }
-/* Count the run (it has STARTED, so quitting still spends it) and say whether
-   it gets the interlude. The counter RESETS on a jam run, so 3 / 6 / 9 ... */
+/* the pre-2026 key counted STARTED runs. Drop it rather than migrate it: a
+   half-spent start counter is not a completion count. */
+function migrateRunCount() {
+  try { window.localStorage.removeItem(JAM_RUNS_LEGACY_KEY); } catch (e) { }
+}
+/* the little "Carrera N" line on the title card - which run is about to be
+   driven, i.e. one past however many have been finished */
+function updateRunLine() {
+  var el = $('runLine');
+  if (el) el.textContent = 'Carrera ' + (loadRunsDone() + 1);
+}
+/* Does the run that is STARTING right now get the interlude? Measured off
+   COMPLETED runs, so runs 1 and 2 finish normally and the THIRD one gets the
+   jam. Nothing is written here - the counter only ever moves in arriveUSA() -
+   so quitting, restarting or reloading can never spend a run.
+   ?jam=1 and __RR.forceJam() are both one-shot and neither is persisted. */
 function jamDecide() {
-  var n = loadRunCount() + 1;
-  var want;
-  if (JAM_URL === -1) want = false;
-  else if (jamForceNext) { want = true; jamForceNext = false; }
-  else if (JAM_URL === 1) want = true;
-  else want = !!CFG.JAM_MODE && n >= Math.max(1, CFG.JAM_EVERY_N_RUNS | 0);
-  saveRunCount(want ? 0 : n);
-  JAM.runs = want ? 0 : n;
-  return want;
+  var n = loadRunsDone();
+  JAM.runs = n;
+  if (JAM_URL === -1) return false;
+  if (jamForceNext) { jamForceNext = false; return true; }
+  if (jamUrlOnce) { jamUrlOnce = false; return true; }
+  if (!CFG.JAM_MODE) return false;
+  var every = Math.max(1, CFG.JAM_EVERY_N_RUNS | 0);
+  return (n % every) === (every - 1);
 }
 
 /* Where the interlude fires: about halfway across, inside a ZONA TURBO
@@ -6917,7 +7135,7 @@ function releaseWarn(w) { w.visible = false; warnPool.push(w); }
      magnet  IMÁN   6 s, drags coins in from the neighbouring lanes
      shield  ESCUDO absorbs exactly one impact
    ================================================================ */
-var pickupPool = { magnet: [], shield: [] }, activePickups = [];
+var pickupPool = { magnet: [], shield: [], nitro: [] }, activePickups = [];
 
 function makeMagnet() {
   var g = new THREE.Group();
@@ -6956,7 +7174,7 @@ function makeShield() {
   cross2.userData.noOutline = true; g.add(cross2);
   return g;
 }
-var PICKUP_BUILD = { magnet: makeMagnet, shield: makeShield };
+var PICKUP_BUILD = { magnet: makeMagnet, shield: makeShield, nitro: makeNitro };
 function acquirePickup(kind) {
   var p = pickupPool[kind];
   var o = p.length ? p.pop() : (function () {
@@ -6969,6 +7187,275 @@ function acquirePickup(kind) {
   return o;
 }
 function releasePickup(o) { o.visible = false; pickupPool[o.userData.kind].push(o); }
+
+/* ================================================================
+   8d-ii. THE NITRO CANISTER  ->  SUPER BOOST
+   The one RARE pickup in the game: on average a single canister per run
+   (exactly one in ~70% of runs, none in ~20%, two in ~10%), dropped only into
+   the sparse ZONA TURBO stretches, never into a corridor-blocking row and
+   never on a jump. It is RED, and red is used by no other pickup, so it can
+   never be mistaken for gold, green or blue.
+
+   Taking one CHARGES the BOOST button. Firing it gives SUPER_DUR seconds at
+   1.6x the boost ceiling during which the van is invulnerable and smashes
+   straight through whatever it touches: static hazards burst into cel-shaded
+   fragments of their own colour, moving vehicles are batted out of the lane
+   and left spinning. A second canister while already charged is worth points
+   instead - the charge is one, and it survives the jam interlude.
+   ================================================================ */
+var SUPER_DUR = 4.0;              // seconds of super boost
+var SUPER_PAD_EXTEND = 0.8;       // a boost pad taken during it adds this
+var SUPER_SMASH_PTS = 150;        // per obstacle smashed
+var SUPER_SPARE_PTS = 500;        // a second canister while already charged
+var NITRO_TEX = null;
+
+/* a little cartoon flame, drawn straight onto the canister's label */
+function drawFlameDecal(g, cx, cy, s) {
+  function petal(w, h, col, dy) {
+    g.beginPath();
+    g.moveTo(cx, cy - h + dy);
+    g.bezierCurveTo(cx + w, cy - h * 0.35 + dy, cx + w * 0.72, cy + h * 0.55 + dy, cx, cy + h * 0.62 + dy);
+    g.bezierCurveTo(cx - w * 0.72, cy + h * 0.55 + dy, cx - w, cy - h * 0.35 + dy, cx, cy - h + dy);
+    g.closePath();
+    g.fillStyle = col; g.fill();
+  }
+  petal(s * 0.52, s * 0.92, '#FF7A00', 0);
+  g.lineWidth = Math.max(3, s * 0.10); g.strokeStyle = '#14181f'; g.stroke();
+  petal(s * 0.28, s * 0.52, '#FFE277', s * 0.16);
+}
+function makeNitroTexture() {
+  if (NITRO_TEX) return NITRO_TEX;
+  var W = 512, H = 256, c = cv(W, H), g = c.getContext('2d');
+  g.fillStyle = '#d8261a'; g.fillRect(0, 0, W, H);
+  // pressed ribs round the barrel
+  g.fillStyle = 'rgba(20,24,31,0.16)';
+  for (var rx = 0; rx < W; rx += 64) g.fillRect(rx, 0, 9, H);
+  g.fillStyle = 'rgba(255,255,255,0.16)'; g.fillRect(0, 0, W, 24);
+  g.fillStyle = 'rgba(20,24,31,0.26)'; g.fillRect(0, H - 28, W, 28);
+  drawFlameDecal(g, W * 0.155, H * 0.50, 74);
+  inkText(g, 'NITRO', W * 0.585, H * 0.50, W * 0.60, 104, '#ffffff', 15);
+  NITRO_TEX = signTex(c);
+  return NITRO_TEX;
+}
+/* the canister itself: a red can with a black cap, spinning, wrapped in a red
+   glow so it is unmistakable from the far end of a straight */
+function makeNitro() {
+  var g = new THREE.Group();
+  var redD = toon(0x8e1610), blackM = toon(0x1a1d22), steel = toon(0x9aa3ad);
+  var Y = 1.58;                          // hovers at windscreen height
+  var body = cyl(0.36, 0.36, 0.92, 14, toon(0xffffff, { map: makeNitroTexture() }), 0, Y, 0);
+  addOutline(body, 0.06); g.add(body);
+  var rimT = cyl(0.385, 0.385, 0.09, 14, redD, 0, Y + 0.50, 0);
+  rimT.userData.noOutline = true; g.add(rimT);
+  var rimB = cyl(0.385, 0.385, 0.09, 14, redD, 0, Y - 0.50, 0);
+  rimB.userData.noOutline = true; g.add(rimB);
+  var collar = cyl(0.245, 0.245, 0.10, 10, blackM, 0, Y + 0.57, 0);
+  collar.userData.noOutline = true; g.add(collar);
+  var cap = cyl(0.185, 0.185, 0.26, 10, blackM, 0, Y + 0.75, 0);
+  addOutline(cap, 0.05); g.add(cap);
+  var handle = box(0.46, 0.075, 0.11, blackM, 0, Y + 0.92, 0);
+  addOutline(handle, 0.04); g.add(handle);
+  var nozzle = box(0.09, 0.09, 0.30, steel, 0, Y + 0.70, 0.20);
+  nozzle.userData.noOutline = true; g.add(nozzle);
+  /* TWO additive shells rather than a billboarded plane: the canister spins,
+     and a shell glows the same from every angle without any per-frame work. */
+  var glowA = new THREE.Mesh(new THREE.SphereGeometry(0.80, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff4a22, transparent: true, opacity: 0.26,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  glowA.position.y = Y + 0.06; glowA.renderOrder = 3;
+  glowA.userData.noOutline = true; g.add(glowA);
+  var glowB = new THREE.Mesh(new THREE.SphereGeometry(1.24, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xd8261a, transparent: true, opacity: 0.12,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  glowB.position.y = Y + 0.06; glowB.renderOrder = 3;
+  glowB.userData.noOutline = true; g.add(glowB);
+  /* a coin is 1.4 units across and this has to read at least as clearly from
+     the far end of a straight, so the whole can is stepped up a third */
+  g.scale.setScalar(1.3);
+  return g;
+}
+
+/* ---- SMASH FRAGMENTS ----------------------------------------------------
+   6-10 cel-shaded chips of the obstacle's OWN colours, thrown outward and
+   tumbling away. Pooled, purely decorative, never collided with, and wiped by
+   a restart like every other piece of debris in the game. */
+var FRAG_MAX = 96, FRAG_GEO = null, fragPool = [], fragLive = [];
+function makeFrag() {
+  if (!FRAG_GEO) FRAG_GEO = new THREE.BoxGeometry(1, 1, 1);
+  var m = new THREE.Mesh(FRAG_GEO, toon(0xcccccc, { flat: true }));
+  var hull = new THREE.Mesh(FRAG_GEO, outlineMat(COL.ink));
+  hull.scale.set(1.34, 1.34, 1.34);
+  hull.renderOrder = -1;
+  hull.userData.isOutline = true;
+  m.add(hull);
+  m.visible = false;
+  m.frustumCulled = false;
+  m.userData.noOutline = true;
+  scene.add(m);
+  return m;
+}
+function clearFragments() {
+  for (var i = 0; i < fragLive.length; i++) { fragLive[i].visible = false; fragPool.push(fragLive[i]); }
+  fragLive.length = 0;
+}
+/* what an obstacle is actually painted, so its pieces are visibly ITS pieces */
+function obstacleColors(o) {
+  var out = [];
+  o.traverse(function (c) {
+    if (out.length >= 5) return;
+    if (!c.isMesh || c.userData.isOutline) return;
+    var m = c.material;
+    if (!m || !m.color) return;
+    var h = m.color.getHex();
+    if (h === COL.ink) return;
+    for (var i = 0; i < out.length; i++) if (out[i] === h) return;
+    out.push(h);
+  });
+  if (!out.length) out.push(0xb9bdc3);
+  return out;
+}
+function spawnFragments(o, def, n) {
+  var cols = obstacleColors(o);
+  var count = n || (6 + Math.floor(Math.random() * 5));      // 6 - 10 pieces
+  var hw = Math.min(1.7, def ? def.halfW : 0.7);
+  var hh = Math.min(2.6, def ? def.height : 1.4);
+  for (var i = 0; i < count; i++) {
+    if (fragLive.length >= FRAG_MAX) break;
+    var m = fragPool.length ? fragPool.pop() : makeFrag();
+    var u = m.userData;
+    m.material = toon(cols[i % cols.length], { flat: true });
+    m.visible = true;
+    u.sx = 0.18 + Math.random() * 0.34;
+    u.sy = u.sx * (0.6 + Math.random() * 0.9);
+    u.sz = u.sx * (0.6 + Math.random() * 0.9);
+    m.scale.set(u.sx, u.sy, u.sz);
+    m.position.set(o.position.x + (Math.random() - 0.5) * hw * 1.7,
+                   o.position.y + 0.35 + Math.random() * hh,
+                   o.position.z + (Math.random() - 0.5) * 1.8);
+    m.rotation.set(Math.random() * 3.1, Math.random() * 3.1, Math.random() * 3.1);
+    var a = Math.random() * Math.PI * 2;
+    u.vx = Math.cos(a) * (5 + Math.random() * 12);
+    u.vy = 3 + Math.random() * 9;
+    u.vz = Math.sin(a) * (3 + Math.random() * 6) + 9 + Math.random() * 15;
+    u.rx = (Math.random() - 0.5) * 17;
+    u.ry = (Math.random() - 0.5) * 15;
+    u.rz = (Math.random() - 0.5) * 17;
+    u.age = 0;
+    u.life = 1.1 + Math.random() * 0.7;
+    fragLive.push(m);
+  }
+}
+function updateFragments(dt) {
+  for (var i = fragLive.length - 1; i >= 0; i--) {
+    var m = fragLive[i], u = m.userData;
+    u.age += dt;
+    if (u.age >= u.life) { m.visible = false; fragPool.push(m); fragLive.splice(i, 1); continue; }
+    u.vy -= 26 * dt;
+    m.position.x += u.vx * dt;
+    m.position.y += u.vy * dt;
+    m.position.z += u.vz * dt;
+    m.rotation.x += u.rx * dt;
+    m.rotation.y += u.ry * dt;
+    m.rotation.z += u.rz * dt;
+    var fd = -m.position.z;
+    var gy = hasGround(fd) ? roadHeightAt(fd) : -400;
+    if (m.position.y < gy + 0.12 && u.vy < 0) {
+      m.position.y = gy + 0.12;
+      u.vy = -u.vy * 0.34; u.vx *= 0.72; u.vz *= 0.72;
+      u.rx *= 0.6; u.ry *= 0.6; u.rz *= 0.6;
+    }
+    var k = u.age / u.life;
+    var f = (k > 0.72) ? Math.max(0.05, 1 - (k - 0.72) / 0.28) : 1;
+    m.scale.set(u.sx * f, u.sy * f, u.sz * f);
+  }
+}
+
+/* ---- the charge, and firing it ----------------------------------------- */
+function superActive() { return GAME.superT > 0; }
+/* never during the jam interlude, the phone view, the customs gag or an
+   airborne frame - the launch arc was solved at take-off and must stay solved */
+function superAllowed() {
+  if (GAME.state !== 'PLAYING') return false;
+  if (GAME.airborne) return false;
+  if (JAM.phase !== '' && JAM.phase !== 'RELEASE') return false;
+  return true;
+}
+function updateNitroUI() {
+  var on = !!GAME.nitro;
+  var cls = on ? 'tbtn nitro' : 'tbtn';
+  var b = $('tHonk');
+  if (b) {
+    b.setAttribute('data-cls', cls);
+    b.className = (b.className.indexOf('press') >= 0) ? (cls + ' press') : cls;
+  }
+  var n = $('nitroInd');
+  if (n) n.className = on ? 'on' : '';
+}
+function fireSuperboost() {
+  GAME.nitro = false;
+  GAME.superQueued = false;
+  GAME.superT = SUPER_DUR;
+  GAME.superUsed++;
+  GAME.speed = Math.max(GAME.speed, CFG.V_SUPER_MAX * 0.96);
+  GAME.boostTime = Math.max(GAME.boostTime, SUPER_DUR);
+  GAME.slip = 0;
+  GAME.shake = Math.min(1.6, GAME.shake + 0.95);
+  GAME.noLines = 0;
+  callout('¡SÚPER BOOST!', 1.7);
+  SFX.superRoar();
+  fxBoost(van.position);
+  fxRing(GAME.x, GAME.y + 1.2, -GAME.dist + 1.0, 0.48, 1.2, 9.0);
+  var el = $('fx-boostflash');
+  el.style.opacity = '0.85';
+  setTimeout(function () { el.style.opacity = '0'; }, 260);
+  updateNitroUI();
+}
+/* THE BOOST BUTTON (and Space on a desktop). Charged, it fires the super
+   boost; uncharged - or anywhere the super boost is not allowed - it is still
+   the horn, so the BOCINA is not lost. Airborne, it is queued until landing. */
+function boostOrHonk() {
+  if (GAME.state === 'TITLE') { startRun(); return; }
+  if (GAME.state !== 'PLAYING') { honk(); return; }
+  if (GAME.nitro) {
+    if (GAME.airborne) {
+      GAME.superQueued = true;
+      toastCol('NITRO EN ESPERA', 'orange');
+      SFX.blip();
+      return;
+    }
+    if (superAllowed()) { fireSuperboost(); return; }
+  }
+  honk();
+}
+/* one obstacle, hit at super-boost speed. Returns true if the caller should
+   retire it (it burst); false if it is still in the world (a vehicle that was
+   knocked aside instead). Never costs speed, never rages the driver and never
+   spills the load. */
+function smashObstacle(o, u) {
+  var def = OBST_DEFS[u.type];
+  GAME.smashes++;
+  GAME.superPts += SUPER_SMASH_PTS;
+  GAME.shake = Math.min(1.3, GAME.shake + 0.30);
+  SFX.smash();
+  fxPopNumber(o.position.x, o.position.y + 1.6, o.position.z, '+' + SUPER_SMASH_PTS);
+  if (u.speed > 0) {
+    /* a MOVING vehicle is not vaporised: it is batted out of the lane, hops,
+       spins and is left behind. It stops being a hazard the instant it is hit. */
+    u.knocked = 1;
+    u.kdir = (o.position.x >= GAME.x) ? 1 : -1;
+    u.kvx = u.kdir * (15 + Math.random() * 11);
+    u.kspin = u.kdir * (3.0 + Math.random() * 2.8);
+    u.kroll = u.kdir * (1.0 + Math.random() * 1.3);
+    u.khop = 4.0 + Math.random() * 3.5;
+    u.kx = 0; u.ky = 0;
+    fxSmoke(o.position, IS_MOBILE ? 4 : 8);
+    spawnFragments(o, def, IS_MOBILE ? 4 : 6);
+    return false;
+  }
+  spawnFragments(o, def);
+  fxImpact(o.position);
+  return true;
+}
 
 /* ================================================================
    8b. GOLD COINS  (pooled, spinning, magnet-ish pickup)
@@ -7422,21 +7909,38 @@ function updatePickups(dt) {
   }
 }
 function takePickup(kind, pos) {
+  var red = false;
   if (kind === 'magnet') {
     GAME.magnet = 6.0;
     toastCol('¡IMÁN! 6s', 'blue');
+    SFX.power();
+  } else if (kind === 'nitro') {
+    red = true;
+    if (GAME.nitro || GAME.superT > 0) {
+      /* the charge is ONE. A second canister is worth points instead. */
+      GAME.superPts += SUPER_SPARE_PTS;
+      toastCol('+' + SUPER_SPARE_PTS, 'orange');
+      SFX.power();
+    } else {
+      GAME.nitro = true;
+      callout('¡NITRO!', 1.3);
+      toastCol('BOOST LISTO', 'orange');
+      SFX.nitroReady();
+      updateNitroUI();
+    }
   } else {
     GAME.shield = true;
     toastCol('¡ESCUDO!', 'blue');
+    SFX.power();
   }
-  SFX.power();
   for (var i = 0; i < (IS_MOBILE ? 10 : 18); i++) {
     var a = Math.random() * Math.PI * 2;
     emit({
       x: pos.x, y: pos.y + 1.6, z: pos.z,
       vx: Math.cos(a) * (2 + Math.random() * 5), vy: 1.5 + Math.random() * 4, vz: Math.sin(a) * (2 + Math.random() * 5),
       life: 0.36 + Math.random() * 0.24, size: 0.16 + Math.random() * 0.2,
-      color: i % 2 ? 0x6fb4ff : 0xffffff, grav: 6, spin: 8
+      color: red ? (i % 2 ? 0xff5a1e : 0xffe277) : (i % 2 ? 0x6fb4ff : 0xffffff),
+      grav: 6, spin: 8
     });
   }
 }
@@ -8510,6 +9014,7 @@ function courseAudit() {
     minReactAt: minReactAt,
     minReactStatic: isFinite(minReactS) ? +minReactS.toFixed(3) : null,
     minReactStaticAt: minReactSAt,
+    nitro: GEN_STATS.nitro,
     movers: GEN_STATS.movers,
     moversMoved: GEN_STATS.moversMoved,
     moversDropped: GEN_STATS.moversDropped,
@@ -8577,7 +9082,7 @@ function generateCourse(seed) {
   pickupPlan = []; warnPlan = []; PATTERN_LOG = []; CORRIDOR_SPANS = [];
   momentPlan = []; momentCursor = 0; SPARSE_RANGES = [];
   GEN_STATS = { movers: 0, moversMoved: 0, moversDropped: 0, retries: 0,
-                repaired: 0, seed: seed >>> 0 };
+                repaired: 0, nitro: 0, seed: seed >>> 0 };
 
   var d = CFG.COURSE_D0;
   var pathLane = 1 + Math.floor(r() * 2);
@@ -8790,6 +9295,30 @@ function generateCourse(seed) {
     if (!J.big) coinLine(coinPlan, J.land + 14, jl < 0 ? 1 : jl, 5, 5.5);
   }
 
+  /* ---- THE NITRO CANISTER -------------------------------------------------
+     Rare on purpose: ONE per run on average - exactly one in 70% of runs, none
+     in 20%, two in 10% - and only ever inside a sparse ZONA TURBO stretch,
+     clear of every hazard row and of every jump. The roll comes off the same
+     seeded RNG as the rest of the course, so a seed always lays out the same
+     canisters. */
+  var nq = r();
+  var nWant = (nq < 0.20) ? 0 : ((nq < 0.90) ? 1 : 2);
+  if (nWant > 0) {
+    var slots = [];
+    for (var ni = 0; ni < SPARSE_RANGES.length; ni++) {
+      var SR = SPARSE_RANGES[ni];
+      if (SR.d1 - SR.d0 < 120) continue;
+      slots.push({ d0: SR.d0 + 50, d1: SR.d1 - 30 });
+    }
+    for (var sh = slots.length - 1; sh > 0; sh--) {
+      var sj = Math.floor(r() * (sh + 1));
+      var tmpSlot = slots[sh]; slots[sh] = slots[sj]; slots[sj] = tmpSlot;
+    }
+    for (var sq = 0; sq < slots.length && GEN_STATS.nitro < nWant; sq++) {
+      if (placeNitro(slots[sq], r)) GEN_STATS.nitro++;
+    }
+  }
+
   /* ---- the two guarantees, applied to the finished course -----------------
      1. every rolling vehicle is out of the corridor for its whole lifetime
      2. every decision row has a hit-free answer, and no row shuts three lanes
@@ -8816,6 +9345,39 @@ function generateCourse(seed) {
 }
 var totalCoins = 0;
 
+/* One canister, somewhere clear inside one sparse stretch. Nothing solid may
+   be within 34 units of it in ANY lane (so it is never inside a corridor-
+   blocking row), it never sits on a boost pad or another power-up, and it is
+   never anywhere near a ramp, a gap or a landing. Returns true if it went in. */
+function placeNitro(slot, r) {
+  for (var att = 0; att < 16; att++) {
+    var d = slot.d0 + r() * Math.max(1, slot.d1 - slot.d0);
+    if (d < 140 || d > CFG.PLAZA_D0 - 60) continue;
+    if (jumpClearZone(d) || jumpAt(d)) continue;
+    var lanes = corridorLanesAt(d), pool = [], L, k;
+    for (L = 0; L < CFG.LANES; L++) if (!lanes || lanes[L]) pool.push(L);
+    if (!pool.length) for (L = 0; L < CFG.LANES; L++) pool.push(L);
+    var lane = pool[Math.floor(r() * pool.length) % pool.length];
+    var clear = true;
+    for (k = 0; k < obstaclePlan.length; k++) {
+      if (obstaclePlan[k].dead) continue;
+      if (Math.abs(obstaclePlan[k].d - d) < 34) { clear = false; break; }
+    }
+    if (!clear) continue;
+    for (k = 0; k < boostPlan.length; k++) {
+      if (boostPlan[k].lane === lane && Math.abs(boostPlan[k].d - d) < 10) { clear = false; break; }
+    }
+    if (!clear) continue;
+    for (k = 0; k < pickupPlan.length; k++) {
+      if (Math.abs(pickupPlan[k].d - d) < 28) { clear = false; break; }
+    }
+    if (!clear) continue;
+    pickupPlan.push({ d: Math.round(d), lane: lane, kind: 'nitro' });
+    return true;
+  }
+  return false;
+}
+
 /* stream plan entries into live pooled objects */
 function streamCourse(dist) {
   // obstacles
@@ -8834,6 +9396,8 @@ function streamCourse(dist) {
     o.userData.speed = rec.speed || 0;
     o.userData.hit = false;
     o.userData.counted = false;
+    o.userData.knocked = 0;
+    o.rotation.z = 0;
     o.userData.halfW = def.halfW;
     o.userData.halfL = def.halfL;
     o.userData.near = false;
@@ -9072,6 +9636,21 @@ var AC = null, masterGain = null, masterLimiter = null,
    bounded whatever fires at once, which is what lets the music sit as loud as
    it does. */
 var MASTER_LEVEL = 0.62;
+/* ?mute=1 / __RR.setMute(): masterGain is the one node every voice in the game
+   passes through, so this is the whole mute. */
+function applyMasterMute() {
+  if (!masterGain || !AC) return;
+  try {
+    masterGain.gain.cancelScheduledValues(AC.currentTime);
+    masterGain.gain.value = MUTE_ALL ? 0 : MASTER_LEVEL;
+  } catch (e) { }
+}
+function setMuteAll(on) {
+  MUTE_ALL = !!on;
+  applyMasterMute();
+  updateMusicUI();
+  return MUTE_ALL;
+}
 function musMakeLimiter(ctx) {
   var c = ctx.createDynamicsCompressor();
   try {
@@ -9091,7 +9670,7 @@ function initAudio() {
   try { AC = new Ctx(); } catch (e) { AC = null; return; }
 
   masterGain = AC.createGain();
-  masterGain.gain.value = MASTER_LEVEL;
+  masterGain.gain.value = MUTE_ALL ? 0 : MASTER_LEVEL;
   masterLimiter = musMakeLimiter(AC);
   masterGain.connect(masterLimiter);
   masterLimiter.connect(AC.destination);
@@ -9379,6 +9958,47 @@ var SFX = {
     tone(130.81, 0.28, 'triangle', 0.08, null, 0.36);   // C3
     tone(146.83, 0.28, 'triangle', 0.09, null, 0.88);   // D3
     tone(98.00, 0.95, 'triangle', 0.10, null, 1.30);    // G2
+  },
+  /* ---- the NITRO canister and the SUPER BOOST ---- */
+  /* picking one up: a low charged hum that swells and settles */
+  nitroReady: function () {
+    if (!audioReady) return;
+    musDuckNow(0.60);
+    var t = now();
+    var o = AC.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(132, t + 0.55);
+    var o2 = AC.createOscillator(); o2.type = 'sine';
+    o2.frequency.setValueAtTime(35, t);
+    o2.frequency.exponentialRampToValueAtTime(66, t + 0.55);
+    var lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 6;
+    lp.frequency.setValueAtTime(220, t);
+    lp.frequency.exponentialRampToValueAtTime(950, t + 0.60);
+    var g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.18);
+    g.gain.setValueAtTime(0.16, t + 0.72);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+    o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); o2.start(t); o.stop(t + 1.30); o2.stop(t + 1.30);
+    o.onended = function () {
+      try { o.disconnect(); o2.disconnect(); lp.disconnect(); g.disconnect(); } catch (e) { }
+    };
+  },
+  /* firing it: a roar */
+  superRoar: function () {
+    musDuckNow(0.30);
+    noiseBurst(1.40, 260, 4200, 0.30, 'bandpass');
+    noiseBurst(1.10, 1800, 180, 0.22, 'lowpass');
+    tone(90, 1.10, 'sawtooth', 0.20, 320);
+    tone(180, 0.90, 'square', 0.11, 640);
+    tone(45, 1.30, 'triangle', 0.15, 120);
+  },
+  /* going through something at 470 km/h: a crunch */
+  smash: function () {
+    noiseBurst(0.22, 1600, 90, 0.26, 'lowpass');
+    tone(160, 0.16, 'square', 0.16, 52);
+    tone(96, 0.20, 'triangle', 0.11, 40, 0.02);
   },
   /* the pop out of the tailpipes when the turbo lights */
   backfire: function () {
@@ -10226,7 +10846,7 @@ function musWantMode() {
     // the interlude is not a chase: the band drops back to the plain loop and
     // musPhone() puts it down the handset's speaker
     if (JAM.phase !== '' && JAM.phase !== 'RELEASE') return 'run';
-    if (GAME.airborne || GAME.boostTime > 0 || GAME.zone === 'turbo') return 'intense';
+    if (GAME.airborne || GAME.boostTime > 0 || GAME.superT > 0 || GAME.zone === 'turbo') return 'intense';
     return 'run';
   }
   return 'off';
@@ -10347,7 +10967,10 @@ function renderMusicOffline(opts) {
 }
 
 function updateMusicUI() {
-  var ico = MUS.on ? '🔈' : '🔇';
+  /* ?mute=1 silences the whole game, so the MUSICA button reads MUTED however
+     the music preference itself is set */
+  var quiet = MUTE_ALL || !MUS.on;
+  var ico = quiet ? '🔇' : '🔈';
   var els = ['musIco', 'musIco2'];
   for (var i = 0; i < els.length; i++) {
     var e = $(els[i]);
@@ -10356,7 +10979,7 @@ function updateMusicUI() {
   var bs = ['btnMusic', 'btnMusic2'];
   for (var j = 0; j < bs.length; j++) {
     var b = $(bs[j]);
-    if (b) b.className = 'musBtn' + (MUS.on ? '' : ' off');
+    if (b) b.className = 'musBtn' + (quiet ? ' off' : '');
   }
 }
 function toggleMusic() {
@@ -10431,7 +11054,7 @@ function onKeyDown(e) {
   else if (lk === 'd' || k === 'ArrowRight') { requestLane(1); e.preventDefault(); }
   else if (lk === 'p' || k === 'Escape') { togglePause(); e.preventDefault(); }
   else if (lk === 'r') { restart(); e.preventDefault(); }
-  else if (k === ' ' || code === 'Space') { honk(); e.preventDefault(); }
+  else if (k === ' ' || code === 'Space') { boostOrHonk(); e.preventDefault(); }
   else if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); }
 }
 function onKeyUp(e) {
@@ -10451,16 +11074,20 @@ function brakeInput() {
 /* ---- on-screen buttons ---- */
 function bindTapButton(el, fn) {
   if (!el) return;
+  /* a button may carry extra state classes (the BOOST button goes 'tbtn nitro'
+     when it is charged), so the pressed look is layered onto whatever base
+     class it currently has instead of overwriting it */
+  function base() { return el.getAttribute('data-cls') || 'tbtn'; }
   function down(e) {
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
     if (e.type === 'touchstart') usingTouch = true;
     else if (usingTouch) return;
     unlockAudio();
-    el.className = 'tbtn press';
+    el.className = base() + ' press';
     fn();
   }
-  function up() { el.className = 'tbtn'; }
+  function up() { el.className = base(); }
   el.addEventListener('touchstart', down, { passive: false });
   el.addEventListener('touchend', up, false);
   el.addEventListener('touchcancel', up, false);
@@ -10589,10 +11216,7 @@ function bindInput() {
 
   bindTapButton($('tLeft'), function () { doLaneInput(-1); });
   bindTapButton($('tRight'), function () { doLaneInput(1); });
-  bindTapButton($('tHonk'), function () {
-    if (GAME.state === 'TITLE') startRun();
-    else if (GAME.state === 'PLAYING') honk();
-  });
+  bindTapButton($('tHonk'), function () { boostOrHonk(); });
   bindTapButton($('tPause'), function () { togglePause(); });
   bindTapButton($('tFull'), function () { toggleFullscreen(); });
   bindTapButton($('tRot'), function () { if (jamPhoneActive()) tetRotate(); });
@@ -10859,6 +11483,8 @@ var GAME = {
   // streak / multiplier, near-misses, clean-section bonus, power-ups
   streak: 0, bestStreak: 0, coinPts: 0, nearMiss: 0, perfects: 0,
   magnet: 0, shield: false, sectionHits: 0, noLines: 0, grade: 'C',
+  /* the NITRO charge and the SUPER BOOST it buys */
+  nitro: false, superT: 0, superQueued: false, superUsed: 0, smashes: 0, superPts: 0,
   finishTime: 0, sinceFinish: 0, resultsShown: false,
   honkCd: 0, seed: 1, elapsedSincePuff: 0, crossed: false,
   jumpFlags: [false, false, false],
@@ -11062,6 +11688,8 @@ function resetRun(newSeed) {
   GAME.hits = 0; GAME.boosts = 0; GAME.dodged = 0; GAME.coins = 0;
   GAME.streak = 0; GAME.bestStreak = 0; GAME.coinPts = 0; GAME.nearMiss = 0;
   GAME.perfects = 0; GAME.magnet = 0; GAME.shield = false;
+  GAME.nitro = false; GAME.superT = 0; GAME.superQueued = false;
+  GAME.superUsed = 0; GAME.smashes = 0; GAME.superPts = 0;
   GAME.sectionHits = 0; GAME.noLines = 0; GAME.grade = 'C';
   hudCoinShown = 0;
   GAME.finishTime = 0; GAME.sinceFinish = 0; GAME.resultsShown = false;
@@ -11085,6 +11713,8 @@ function resetRun(newSeed) {
   resetDriver();
   resetVanDamage();               // doors shut, spilled boxes + paperwork gone
   resetBoostFlames();             // the mufflers are cold again
+  clearFragments();               // no smashed hazard survives a restart
+  updateNitroUI();                // and the BOOST button goes back to grey
   GAME.tetScore = 0; GAME.tetLines = 0;
   jamReset();                     // jam cars gone, cab view down, Tetris wiped
 
@@ -11189,6 +11819,15 @@ function updateTeach(dt) {
 function arriveUSA() {
   if (GAME.crossed) return;
   GAME.crossed = true;
+  /* THE RUN IS COMPLETE. rr_runs_done is the traffic-jam cadence's only input
+     and this is the one place it ever moves: runs 1 and 2 finish normally,
+     the third gets the interlude, 4 and 5 are normal, 6 gets it again. */
+  saveRunsDone(loadRunsDone() + 1);
+  updateRunLine();
+  /* the super boost ends AT the line: stepFinished has no clock for it, and
+     nothing at the checkpoint may be smashed */
+  GAME.superT = 0;
+  GAME.superQueued = false;
   GAME.finishTime = GAME.time;
   GAME.state = 'FINISHED';
   GAME.sinceFinish = 0;
@@ -11210,7 +11849,7 @@ function computeScore() {
   // is worth far more than the same coins picked up in dribs and drabs
   return Math.max(0, base + GAME.coinPts + GAME.boosts * 160 + GAME.dodged * 30 +
                        GAME.nearMiss * 50 + GAME.perfects * 500 - GAME.hits * 250 +
-                       (GAME.tetScore || 0));
+                       (GAME.tetScore || 0) + (GAME.superPts || 0));
 }
 
 /* ---------------------------------------------------------------------------
@@ -11260,6 +11899,16 @@ function showResults() {
   $('rBoosts').textContent = GAME.boosts;
   $('rHits').textContent = GAME.hits;
   $('rDodge').textContent = GAME.dodged;
+  /* the super boost only earns a line on the card if one was actually fired */
+  var supRow = $('rSuperRow');
+  if (supRow) {
+    if (GAME.superUsed > 0 || GAME.smashes > 0) {
+      $('rSuper').textContent = GAME.smashes + (GAME.smashes === 1 ? ' choque' : ' choques');
+      supRow.className = 'rrow on';
+    } else {
+      supRow.className = 'rrow';
+    }
+  }
   /* the phone mini-game only earns a line on the card if it was played */
   var tetRow = $('rTetRow');
   if (tetRow) {
@@ -11359,7 +12008,10 @@ var hudCoinShown = 0;              // the count-up ticker's displayed value
 function updateHUD(force) {
   // the readout can never exceed the game's real maximum speed, whatever the
   // physics does for a frame
-  var kmh = Math.min(CFG.KMH_MAX, Math.max(0, Math.round(GAME.speed * CFG.KMH)));
+  /* the dial is capped at the game's real maximum - which is the SUPER BOOST
+     ceiling while one is burning, and the ordinary boost ceiling otherwise */
+  var kmh = Math.min(GAME.superT > 0 ? CFG.KMH_SUPER : CFG.KMH_MAX,
+                     Math.max(0, Math.round(GAME.speed * CFG.KMH)));
   if (force || kmh !== hudCache.s) {
     hudCache.s = kmh;
     $('speedNum').textContent = kmh;
@@ -11509,14 +12161,26 @@ function updateObstacles(dt) {
       }
       o.position.z = -u.d;
       o.position.y = roadHeightAt(u.d);
-      /* THE TRAFFIC WAVE. Every rolling vehicle leans across together for a
-         couple of seconds. It is a sway of at most WAVE_AMP (1.45) inside the
-         vehicle's OWN lane, and a car's collision radius is halfW + 1.28 =
-         2.33 against a 4.4 lane pitch, so the shifted vehicle is still ~2.95
-         clear of the next lane centre: the proved corridor is untouched and
-         the only thing the sway can do is turn a pass into a near miss. */
+      /* KNOCKED ASIDE. A vehicle the super boost has hit is no longer traffic:
+         it slides out of the lane, hops, spins and is left behind. It never
+         explodes - only static hazards burst - and it stops being a hazard the
+         instant it is hit (u.hit is already set by the smash). */
       var env = waveEnv();
-      if (env > 0.001) {
+      if (u.knocked) {
+        u.kx += u.kvx * dt;
+        u.kvx = damp(u.kvx, u.kdir * 4, 1.6, dt);
+        u.khop -= 30 * dt;
+        u.ky = Math.max(0, u.ky + u.khop * dt);
+        o.position.x = (u.baseX === undefined ? o.position.x : u.baseX) + u.kx;
+        o.position.y = roadHeightAt(u.d) + u.ky;
+        o.rotation.y += u.kspin * dt;
+        o.rotation.z = clamp(o.rotation.z + u.kroll * dt, -0.95, 0.95);
+        if (Math.abs(u.kx) > 52) {
+          release(o);
+          activeObs.splice(i, 1);
+          continue;
+        }
+      } else if (env > 0.001) {
         o.position.x = (u.baseX === undefined ? o.position.x : u.baseX) +
                        Math.sin(WORLD_T * 1.25 + u.d0 * 0.028) * WAVE_AMP * env;
         o.rotation.y = Math.cos(WORLD_T * 1.25 + u.d0 * 0.028) * 0.09 * env;
@@ -11557,7 +12221,17 @@ function updateObstacles(dt) {
       var gy = hasGround(u.d) ? roadHeightAt(u.d) : 0;
       if (GAME.y - gy < def.height + 0.35) {
         if (Math.abs(o.position.x - GAME.x) < u.halfW + 1.28) {
-          if (u.type === 'oil') {
+          if (superActive()) {
+            /* SUPER BOOST. Nothing on the road can touch the van: an oil slick
+               is simply burned off, a static hazard bursts, a moving vehicle is
+               knocked aside. No speed loss, no rage, no spilled cargo. */
+            u.hit = true; u.counted = true; u.near = true;
+            if (u.type !== 'oil' && smashObstacle(o, u)) {
+              release(o);
+              activeObs.splice(i, 1);
+              continue;
+            }
+          } else if (u.type === 'oil') {
             u.hit = true;
             slipOn(o);
           } else if (GAME.invuln <= 0) {
@@ -11592,7 +12266,10 @@ function updateBoosts(dt) {
       u.used = true;
       b.visible = false;
       GAME.boosts++;
-      GAME.speed = Math.min(CFG.V_BOOST_MAX, GAME.speed + CFG.BOOST_KICK);
+      /* a pad taken while the super boost is burning EXTENDS it */
+      if (superActive()) GAME.superT = Math.min(SUPER_DUR * 1.5, GAME.superT + SUPER_PAD_EXTEND);
+      GAME.speed = Math.min(superActive() ? CFG.V_SUPER_MAX : CFG.V_BOOST_MAX,
+                            GAME.speed + CFG.BOOST_KICK);
       /* ---- BOOST CHAINS.
          Only pads authored as part of a staggered chain (chain:1) count, so
          the wall of pads on a jump run-up cannot inflate the multiplier. Each
@@ -11629,6 +12306,15 @@ function stepPlaying(dt) {
   GAME.invuln = Math.max(0, GAME.invuln - dt);
   GAME.boostTime = Math.max(0, GAME.boostTime - dt);
   GAME.shake = Math.max(0, GAME.shake - dt * 2.0);
+  /* THE SUPER BOOST CLOCK. While it burns the van shakes, is invulnerable
+     (updateObstacles smashes instead of colliding) and is allowed past the
+     ordinary boost ceiling; when it ends it gets a short grace window so the
+     very next hazard is not a free hit. */
+  if (GAME.superT > 0) {
+    GAME.superT = Math.max(0, GAME.superT - dt);
+    GAME.shake = Math.max(GAME.shake, 0.26);
+    if (GAME.superT === 0) GAME.invuln = Math.max(GAME.invuln, 0.6);
+  }
 
   // ----- longitudinal.  Wheels off the ground = no throttle, no brakes:
   // the flight arc was solved at take-off and must stay solvable.
@@ -11654,10 +12340,12 @@ function stepPlaying(dt) {
       if (GAME.speed < Math.min(CFG.V_CRUISE, cap)) GAME.speed += CFG.ACCEL_COAST * dt;
       else GAME.speed -= CFG.DRAG * 0.45 * dt;
     }
-    if (GAME.speed > cap) GAME.speed -= (GAME.speed - cap) * 1.25 * dt;
+    // the super boost is explicitly ALLOWED to hold above the cap
+    if (GAME.speed > cap && GAME.superT <= 0) GAME.speed -= (GAME.speed - cap) * 1.25 * dt;
   }
   if (!isFinite(GAME.speed)) GAME.speed = CFG.V_CRUISE;
-  GAME.speed = clamp(GAME.speed, jamFloor, CFG.V_BOOST_MAX);
+  GAME.speed = clamp(GAME.speed, jamFloor,
+                     GAME.superT > 0 ? CFG.V_SUPER_MAX : CFG.V_BOOST_MAX);
 
   /* ---- the traffic-jam interlude, the two phases that still move ---------
      APPROACH: brake down a sqrt profile so the van always lands on the stop
@@ -11769,6 +12457,9 @@ function stepPlaying(dt) {
     GAME.flightJump = null;
     GAME.y = damp(GAME.y, roadHeightAt(GAME.dist), 14, dt);
   }
+
+  /* a super boost asked for in mid-air fires the instant the wheels are down */
+  if (GAME.superQueued && superAllowed()) fireSuperboost();
 
   // ----- backstop: if anything ever went sideways, still finish properly
   if (!GAME.crossed && !GAME.airborne && GAME.dist >= CFG.FINISH_D - 40) arriveUSA();
@@ -12122,8 +12813,9 @@ function updateCamera(dt) {
   /* FOV opens up with speed: 60 at rest, 78 flat out on a boost. */
   var fovBase = portrait ? 68 : 60;
   var fovTop = portrait ? 86 : 78;
-  var fovGoal = clamp(fovBase + spdF * 13 + (GAME.boostTime > 0 ? 7 : 0) + (GAME.airborne ? 3 : 0),
-                      fovBase, fovTop) - GAME.camPush * 12;
+  var fovGoal = clamp(fovBase + spdF * 13 + (GAME.boostTime > 0 ? 7 : 0) +
+                      (GAME.superT > 0 ? 11 : 0) + (GAME.airborne ? 3 : 0),
+                      fovBase, fovTop + (GAME.superT > 0 ? 10 : 0)) - GAME.camPush * 12;
   camera.fov = damp(camera.fov, fovGoal, 5, dt);
   camera.updateProjectionMatrix();
 }
@@ -12218,7 +12910,8 @@ var speedEl = null;
 function updateSpeedFX(dt) {
   if (!speedEl) speedEl = $('fx-speed');
   var over = clamp((GAME.speed - CFG.V_CRUISE * 1.04) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
-  var o = Math.min(0.90, over * 0.62 + (GAME.boostTime > 0 ? 0.40 : 0));
+  var o = Math.min(0.95, over * 0.62 + (GAME.boostTime > 0 ? 0.40 : 0) +
+                         (GAME.superT > 0 ? 0.30 : 0));
   if (GAME.state !== 'PLAYING' && GAME.state !== 'FINISHED') o = 0;
   if (GAME.noLines > 0) o = 0;              // an impact kills the speed lines dead
   speedEl.style.opacity = o.toFixed(2);
@@ -12318,6 +13011,7 @@ function frame(dt, tAbs) {
     updateCoinHud(dt);
     updateCargoBoxes(dt);
     updatePapers(dt);
+    updateFragments(dt);
     updateWorld(dt);
   }
   updateSpeedFX(dt);
@@ -12478,6 +13172,9 @@ function boot() {
 
   bindInput();
   loadMusicPref();
+  migrateRunCount();         // the old 'rr_runs' key is gone for good
+  updateRunLine();
+  updateNitroUI();
 
   // park the van on the Mexican side for the title screen
   GAME.dist = CFG.START_D + 22;
@@ -12522,6 +13219,7 @@ function boot() {
                  coins: activeCoins.length, particles: partLive.length,
                  pickups: activePickups.length, warns: activeWarns.length,
                  boxes: cargoLive.length, papers: paperLive.length,
+                 frags: fragLive.length,
                  rings: ringLive.length, pops: popLive.length,
                  planned: { o: obstaclePlan.length, b: boostPlan.length, c: coinPlan.length,
                             p: pickupPlan.length, w: warnPlan.length, m: momentPlan.length } };
@@ -12637,6 +13335,31 @@ function boot() {
                  layers: flameRigs.length ? flameRigs[0].children.length : 0,
                  chain: GAME.boostChain, boostTime: +GAME.boostTime.toFixed(2) };
       },
+      /* ---- the NITRO charge and the SUPER BOOST ---- */
+      get nitro() {
+        var planned = [], i;
+        for (i = 0; i < pickupPlan.length; i++) {
+          if (pickupPlan[i].kind === 'nitro') planned.push({ d: pickupPlan[i].d, lane: pickupPlan[i].lane });
+        }
+        var bEl = $('tHonk'), iEl = $('nitroInd');
+        return {
+          charged: !!GAME.nitro, queued: !!GAME.superQueued,
+          superT: +GAME.superT.toFixed(3), active: GAME.superT > 0,
+          used: GAME.superUsed, smashes: GAME.smashes, pts: GAME.superPts,
+          frags: fragLive.length, dur: SUPER_DUR,
+          vMax: CFG.V_SUPER_MAX, kmhCap: CFG.KMH_SUPER,
+          live: activePickups.filter(function (p) { return p.userData.kind === 'nitro'; }).length,
+          planned: planned,
+          btn: bEl ? bEl.className : '', ind: iEl ? iEl.className : ''
+        };
+      },
+      /* test hooks: hand the player a charge, and fire it */
+      giveNitro: function () { GAME.nitro = true; updateNitroUI(); return true; },
+      superboost: function () {
+        if (!GAME.nitro) { GAME.nitro = true; updateNitroUI(); }
+        boostOrHonk();
+        return +GAME.superT.toFixed(3);
+      },
       /* ---- the traffic-jam interlude ---- */
       get jamState() {
         return {
@@ -12647,7 +13370,8 @@ function boot() {
           d: Math.round(JAM.d), stopD: Math.round(JAM.stopD),
           front: Math.round(JAM.frontMax), clearUntil: Math.round(JAM.clearUntil),
           cars: jamLive.length, fp: JAM.fp, fade: +JAM.fade.toFixed(3),
-          clockPaused: jamHolding(), runs: loadRunCount(),
+          clockPaused: jamHolding(), runs: loadRunsDone(), runsDone: loadRunsDone(),
+          urlOnce: jamUrlOnce, jamThisRun: JAM.armed,
           tetScore: GAME.tetScore, tetLines: GAME.tetLines,
           sparse: SPARSE_RANGES.length,
           tetris: { lines: TET.lines, score: TET.score, level: TET.level,
@@ -12679,7 +13403,9 @@ function boot() {
           camera.updateMatrixWorld(true);
           camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
           var hb = new THREE.Box3();
-          [fpShellMesh, fpThumbL, fpThumbR].forEach(function (o) { if (o) hb.expandByObject(o); });
+          /* the WHOLE framed rig - handset, thumbs, fingertips, palms, wrists,
+             outline hulls and all - which is exactly what fpLayout() solves */
+          fpHandsetParts.forEach(function (o) { if (o) hb.expandByObject(o); });
           var lox = 1e9, hix = -1e9, loy = 1e9, hiy = -1e9, dmin = 1e9, ci, cj, ck;
           for (ci = 0; ci < 2; ci++) for (cj = 0; cj < 2; cj++) for (ck = 0; ck < 2; ck++) {
             var pt = new THREE.Vector3(ci ? hb.max.x : hb.min.x,
@@ -12716,8 +13442,9 @@ function boot() {
           wsVisible: !!(vanWindshield && vanWindshield.visible)
         };
       },
-      get runs() { return loadRunCount(); },
-      setRuns: function (n) { saveRunCount(Math.max(0, (+n) | 0)); return loadRunCount(); },
+      get runs() { return loadRunsDone(); },
+      get runsDone() { return loadRunsDone(); },
+      setRuns: function (n) { saveRunsDone(Math.max(0, (+n) | 0)); updateRunLine(); return loadRunsDone(); },
       /* drive RESCO BLOCKS from a harness */
       tetris: {
         move: function (d) { return tetMove(d < 0 ? -1 : 1); },
@@ -12792,13 +13519,18 @@ function boot() {
       get roadY() { return roadHeightAt(GAME.dist); },
       get launchSpeed() { return GAME.launchSpeed; },
       get zone() { return GAME.zone; },
-      get kmh() { return Math.min(CFG.KMH_MAX, Math.max(0, Math.round(GAME.speed * CFG.KMH))); },
+      get kmh() {
+        return Math.min(GAME.superT > 0 ? CFG.KMH_SUPER : CFG.KMH_MAX,
+                        Math.max(0, Math.round(GAME.speed * CFG.KMH)));
+      },
       get music() {
         return { on: MUS.on, mode: MUS.mode, pending: MUS.pending,
                  bar: MUS.bar, slot: MUS.slot, step: MUS.step, bpm: musBpm(),
                  ctx: AC ? AC.state : 'none', timer: !!MUS.timer,
                  notes: MUS.notes, err: MUS.err, lastErr: MUS.lastErr,
                  nextT: MUS.nextT, level: MUS.bus ? MUS.bus.gain.value : null,
+                 muted: MUTE_ALL,
+                 masterGain: masterGain ? +masterGain.gain.value.toFixed(4) : null,
                  mix: { drum: MUS_MIX.drum, bass: MUS_MIX.bass,
                         brass: MUS_MIX.brass, lead: MUS_MIX.lead },
                  /* the two ways out of the duck bus: `dry` is the room and
@@ -12821,6 +13553,9 @@ function boot() {
         return MUS.err;
       },
       setMusic: function (on) { if (!!on !== MUS.on) toggleMusic(); return MUS.on; },
+      /* ?mute=1 in code form: silences master, and nothing unmutes it but this */
+      setMute: function (on) { return setMuteAll(on === undefined ? true : !!on); },
+      get muted() { return MUTE_ALL; },
       unlockAudio: function () {
         try { unlockAudio(); } catch (e) { reportError(e, 'unlockAudio'); }
         return AC ? AC.state : 'none';
