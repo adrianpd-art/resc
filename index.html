@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Resco Run</title>
+<!-- STANDALONE WEB APP.
+     iPhone Safari has no Fullscreen API, so the only way to lose the browser
+     bar there is "Add to Home Screen". These five tags are what make that
+     open the game chrome-free, in the game's own colours. The matching
+     apple-touch-icon is a 180x180 data: URI drawn from a canvas at boot and
+     injected by injectAppIcon() - no image file anywhere. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Resco Run">
+<meta name="theme-color" content="#14181F">
 <style>
 /* ============================================================
    RESCO RUN - cel shaded border-bridge dash
@@ -24,6 +35,19 @@
   --boost-l:#8CF7B4;
   --boost-d:#0E8C39;
   --hs:1;           /* HUD scale, set from JS off min(innerW,innerH) */
+  /* ---- VIEWPORT-DERIVED SIZES, all written by layoutVars() from
+     window.innerWidth / innerHeight. Never vh: iOS Safari lies about vh, and
+     a media query cannot see a safe-area inset.
+       --topsafe  how far the TOP HUD ROW is pushed down. A phone held in
+                  landscape can have the browser's own bar (and the notch)
+                  overlaying the top of the page, so nothing important is
+                  allowed in the top 8% there.
+       --lanebtn  diameter of the two lane buttons - capped against the frame
+                  HEIGHT as well as its width.
+       --rowbtn   height of the ROTAR / CAER pair. */
+  --topsafe:0px;
+  --lanebtn:138px;
+  --rowbtn:62px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden;background:#0d1017;}
@@ -65,7 +89,7 @@ canvas{display:block}
 #hud.on{display:block}
 
 #timerBox{
-  position:absolute;left:16px;top:14px;
+  position:absolute;left:16px;top:calc(14px + var(--topsafe) + env(safe-area-inset-top,0px));
   padding:6px 16px 8px;border-radius:14px;
   background:rgba(20,24,31,.72);border:4px solid var(--ink);
   box-shadow:0 4px 0 rgba(0,0,0,.4);
@@ -90,7 +114,7 @@ canvas{display:block}
 
 /* gold coin counter */
 #coinBox{
-  position:absolute;left:16px;top:86px;
+  position:absolute;left:16px;top:calc(86px + var(--topsafe) + env(safe-area-inset-top,0px));
   display:flex;align-items:center;gap:9px;
   padding:5px 15px 6px 9px;border-radius:14px;
   background:rgba(20,24,31,.72);border:4px solid var(--ink);
@@ -139,7 +163,7 @@ canvas{display:block}
   box-shadow:0 0 0 3px var(--ink)}
 
 #hitsBox{
-  position:absolute;right:16px;top:14px;text-align:right;
+  position:absolute;right:16px;top:calc(14px + var(--topsafe) + env(safe-area-inset-top,0px));text-align:right;
   padding:6px 14px 8px;border-radius:14px;
   background:rgba(20,24,31,.72);border:4px solid var(--ink);
   box-shadow:0 4px 0 rgba(0,0,0,.4);
@@ -153,7 +177,8 @@ canvas{display:block}
 #progTrack:after{content:"";position:absolute;left:0;right:0;bottom:-7px;height:3px;border-radius:2px;
   background:linear-gradient(90deg,#0E7A3C 0 33.3%,#FFFFFF 33.3% 66.6%,#D42A2A 66.6% 100%);opacity:.9}
 #progWrap{
-  position:absolute;left:50%;top:16px;transform:translateX(-50%) scale(var(--hs));
+  position:absolute;left:50%;top:calc(16px + var(--topsafe) + env(safe-area-inset-top,0px));
+  transform:translateX(-50%) scale(var(--hs));
   transform-origin:center top;
   display:flex;align-items:center;gap:8px;
   padding:7px 10px;border-radius:16px;
@@ -200,7 +225,7 @@ canvas{display:block}
 
 /* music mute toggle (HUD + pause card) */
 #musBox{
-  position:absolute;left:16px;top:150px;
+  position:absolute;left:16px;top:calc(150px + var(--topsafe) + env(safe-area-inset-top,0px));
   transform:scale(var(--hs));transform-origin:left top;
 }
 .musBtn{
@@ -229,7 +254,7 @@ canvas{display:block}
 #noteCol{
   /* Always below the MUSICA button (which sits at top:150px whatever the HUD
      scale is), so a wide banner can never land on top of a HUD panel. */
-  position:fixed;left:50%;top:max(178px, 21%);transform:translateX(-50%);z-index:11;
+  position:fixed;left:50%;top:calc(max(178px, 21%) + var(--topsafe));transform:translateX(-50%);z-index:11;
   pointer-events:none;display:flex;flex-direction:column;align-items:center;
   gap:9px;width:min(88vw,760px);   /* px, not vh: iOS Safari lies about vh */
 }
@@ -362,8 +387,8 @@ canvas{display:block}
 .tbtn.press{background:rgba(255,122,0,.62);border-color:rgba(255,255,255,.85);transform:scale(.94)}
 #tLeft,#tRight{
   bottom:calc(16px + env(safe-area-inset-bottom,0px));
-  width:min(26vw,138px);height:min(26vw,138px);border-radius:50%;
-  font-size:min(12vw,60px);line-height:1;
+  width:var(--lanebtn);height:var(--lanebtn);border-radius:50%;
+  font-size:calc(var(--lanebtn) * 0.43);line-height:1;
 }
 /* first-run teach: two soft pulses so a new player notices the buttons */
 #tLeft.teach,#tRight.teach{animation:tpulse 1.05s ease-out 2}
@@ -374,7 +399,7 @@ canvas{display:block}
 }
 /* the hint strip shown over the title screen */
 #touchHint{
-  position:absolute;left:50%;bottom:calc(30px + min(26vw,138px) + env(safe-area-inset-bottom,0px));
+  position:absolute;left:50%;bottom:calc(30px + var(--lanebtn) + env(safe-area-inset-bottom,0px));
   transform:translateX(-50%);pointer-events:none;display:none;
   white-space:nowrap;max-width:94vw;text-align:center;
   padding:8px 16px;border-radius:14px;
@@ -399,11 +424,42 @@ canvas{display:block}
 }
 #tHonk.press{transform:translateX(-50%) scale(.94)}
 #tPause{
-  top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));
+  top:calc(12px + var(--topsafe) + env(safe-area-inset-top,0px));
+  right:calc(12px + env(safe-area-inset-right,0px));
   width:min(15vw,64px);height:min(15vw,64px);border-radius:14px;font-size:min(6vw,26px);
 }
+/* ---------- FULLSCREEN TOGGLE -------------------------------------------
+   Android Chrome eats the top of a landscape phone with its own bar, so the
+   game asks for real fullscreen on the first gesture that starts a run - and
+   this button is the way back in (and out) afterwards. It lives OUTSIDE the
+   #touch layer so it also exists on a mouse-driven desktop, and it only ever
+   appears when the Fullscreen API is actually there (body.fsapi), never while
+   already fullscreen (body.fs). */
+#tFull{
+  position:fixed;z-index:15;display:none;
+  top:calc(12px + var(--topsafe) + env(safe-area-inset-top,0px));
+  right:calc(12px + env(safe-area-inset-right,0px));
+  width:min(15vw,64px);height:min(15vw,64px);border-radius:14px;font-size:min(5.4vw,24px);
+}
+body.fsapi #tFull{display:flex}
+body.fsapi.fs #tFull{display:none}
+/* on a touch device PAUSA already owns the corner: sit just inboard of it */
+body.touch #tFull{right:calc(12px + env(safe-area-inset-right,0px) + min(15vw,64px) + 8px)}
+/* TWO BUTTONS IN ONE CORNER.
+   PAUSA alone left the centred MX -> US progress bar 60 px of clearance on a
+   390-wide phone; adding the fullscreen button beside it eats all of that. So
+   whenever the fullscreen button actually exists, BOTH top-right buttons come
+   down a size (still a 47 px target, and the lane buttons - the ones you
+   actually play with - are untouched at ~100 px) and the progress track gives
+   back a few vw on a narrow screen. Nothing moves off centre. */
+body.fsapi.touch #tPause,body.fsapi #tFull{
+  width:min(12vw,52px);height:min(12vw,52px);font-size:min(5vw,22px);
+}
+body.fsapi.touch #tFull{right:calc(12px + env(safe-area-inset-right,0px) + min(12vw,52px) + 8px)}
+/* on a mouse-driven desktop the stats box owns it instead: drop that down */
+body.fsapi:not(.touch) #hitsBox{top:calc(14px + var(--topsafe) + env(safe-area-inset-top,0px) + 56px)}
 /* on touch devices the pause button sits where the stats box is -> nudge stats down */
-body.touch #hitsBox{top:calc(14px + min(16vw,74px))}
+body.touch #hitsBox{top:calc(14px + var(--topsafe) + env(safe-area-inset-top,0px) + min(16vw,74px))}
 /* a phone has no keyboard: drop the key legend and let the card breathe */
 body.touch .keys{display:none}
 body.touch #scrTitle .hint{margin-top:16px}
@@ -422,15 +478,16 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
   #speedUnit{bottom:7px}
   #boostBox{width:152px}
   #progTrack{width:30vw}
+  body.fsapi #progTrack{width:25vw}
 }
 /* keep the bottom gauges clear of the thumb buttons */
 @media (max-aspect-ratio:3/4){          /* tall portrait: lift them above */
-  body.touch #speedBox{bottom:calc(168px + env(safe-area-inset-bottom,0px))}
-  body.touch #boostBox{bottom:calc(172px + env(safe-area-inset-bottom,0px))}
+  body.touch #speedBox{bottom:calc(var(--lanebtn) + 30px + env(safe-area-inset-bottom,0px))}
+  body.touch #boostBox{bottom:calc(var(--lanebtn) + 34px + env(safe-area-inset-bottom,0px))}
 }
 @media (min-aspect-ratio:3/4){          /* landscape: push them inboard */
-  body.touch #speedBox{left:calc(20px + min(28vw,150px))}
-  body.touch #boostBox{right:calc(20px + min(28vw,150px))}
+  body.touch #speedBox{left:calc(20px + var(--lanebtn) + 14px)}
+  body.touch #boostBox{right:calc(20px + var(--lanebtn) + 14px)}
 }
 
 /* ---------- TRAFFIC-JAM INTERLUDE ----------------------------------------
@@ -445,14 +502,46 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
    the existing controls. No vh anywhere. */
 #tRot,#tDrop{
   display:none;
-  bottom:calc(26px + min(26vw,138px) + env(safe-area-inset-bottom,0px));
-  width:min(30vw,152px);height:min(13vw,62px);border-radius:16px;
+  bottom:calc(26px + var(--lanebtn) + env(safe-area-inset-bottom,0px));
+  width:min(30vw,152px);height:var(--rowbtn);border-radius:16px;
   font-size:min(4.2vw,19px);letter-spacing:1px;
 }
 #tRot{left:calc(14px + env(safe-area-inset-left,0px))}
 #tDrop{right:calc(14px + env(safe-area-inset-right,0px))}
+/* LANDSCAPE. Stacked above the lane buttons these two would own the bottom
+   40% of a 390-tall frame and the handset would have nowhere to go, so in
+   landscape they move OFF that row and sit INBOARD of the lane buttons on the
+   same line. The phone then keeps the whole upper frame. */
+body.land #tRot,body.land #tDrop{
+  bottom:calc(16px + env(safe-area-inset-bottom,0px) + (var(--lanebtn) - var(--rowbtn)) * 0.5);
+  width:min(22vw,150px);
+}
+body.land #tRot{left:calc(14px + env(safe-area-inset-left,0px) + var(--lanebtn) + 12px)}
+body.land #tDrop{right:calc(14px + env(safe-area-inset-right,0px) + var(--lanebtn) + 12px)}
 #touch.jam #tRot,#touch.jam #tDrop{display:flex}
 #touch.jam #tHonk{display:none}
+/* ---------- iOS "ADD TO HOME SCREEN" TIP --------------------------------
+   iPhone Safari has no Fullscreen API at all, so on iOS the only way to lose
+   the browser bar is the home-screen shortcut. One dismissible line on the
+   title card, shown once and then remembered in localStorage. */
+#iosTip{
+  display:none;align-items:center;gap:10px;justify-content:flex-start;
+  margin:16px auto 0;max-width:min(96%,460px);width:auto;
+  padding:9px 14px 10px;border-radius:14px;cursor:pointer;pointer-events:auto;
+  background:var(--ink);border:4px solid var(--ink);
+  box-shadow:0 4px 0 rgba(20,24,31,.45);
+  color:#FFD9A8;font-family:inherit;font-size:min(3.7vw,15px);line-height:1.25;
+  letter-spacing:.3px;text-align:left;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+#iosTip.on{display:flex}
+#iosTip b{color:#8FD0FF}
+#iosTip .ic{
+  width:24px;height:24px;flex:none;background-repeat:no-repeat;
+  background-position:center;background-size:contain;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFD9A8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='M8 7l4-4 4 4'/%3E%3Cpath d='M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7'/%3E%3C/svg%3E");
+}
+
 /* the RESCO BLOCKS line on the results card: only there if it was played */
 #rTetRow{display:none}
 #rTetRow.on{display:flex}
@@ -526,6 +615,9 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
   <button class="tbtn" id="tDrop" type="button" aria-label="Soltar pieza">CAER</button>
 </div>
 
+<!-- pantalla completa - outside #touch so it exists on the desktop too -->
+<button class="tbtn" id="tFull" type="button" aria-label="Pantalla completa">&#9974;</button>
+
 <!-- ============ JAM CUT ============ -->
 <div id="jamFade"></div>
 
@@ -547,6 +639,7 @@ body.touch #tPause{background:rgba(20,24,31,.52)}
     </div>
     <div class="blink">TOCA PARA EMPEZAR</div>
     <div class="hint">En el celular el acelerador es autom&aacute;tico. Usa los botones &#9664; &#9654;, desliza el dedo o toca un lado de la pantalla para cambiar de carril. Junta las monedas de oro y libra los 3 saltos.</div>
+    <button id="iosTip" type="button"><span class="ic"></span><span>Para pantalla completa: Compartir <b>&#11014;</b> &rarr; Agregar a pantalla de inicio</span></button>
   </div>
 </div>
 
@@ -636,6 +729,19 @@ try {
   IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
              (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 } catch (e0) { IS_TOUCH = false; }
+/* ---- test overrides -------------------------------------------------------
+   ?touch=1 / ?touch=0 force the touch layout on or off, so a desktop browser
+   can be pointed at the phone layout (and its safe-area / button geometry)
+   without emulating a device. ?iostip=1 forces the iOS home-screen tip on the
+   title card. Neither is ever set by the game. */
+var IOS_TIP_URL = 0;
+try {
+  var _uq = '' + (window.location.search || '');
+  if (/[?&]touch=1(?:&|$)/.test(_uq)) IS_TOUCH = true;
+  else if (/[?&]touch=0(?:&|$)/.test(_uq)) IS_TOUCH = false;
+  if (/[?&]iostip=1(?:&|$)/.test(_uq)) IOS_TIP_URL = 1;
+  else if (/[?&]iostip=0(?:&|$)/.test(_uq)) IOS_TIP_URL = -1;
+} catch (eU) { IOS_TIP_URL = 0; }
 var IS_MOBILE = IS_TOUCH && Math.min(window.innerWidth, window.innerHeight) < 950;
 
 /* ---------------- traffic-jam interlude: URL test hooks ----------------
@@ -1592,8 +1698,12 @@ function initThree() {
   renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreference: 'high-performance' });
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight, false);
-  renderer.domElement.style.width = '100%';
-  renderer.domElement.style.height = '100%';
+  /* explicit pixels, re-measured on every resize / orientationchange /
+     visualViewport resize - a percentage would follow the layout viewport,
+     which is exactly what stops matching innerHeight when a mobile browser
+     collapses its address bar */
+  renderer.domElement.style.width = window.innerWidth + 'px';
+  renderer.domElement.style.height = window.innerHeight + 'px';
   renderer.setClearColor(0xffb877, 1);
   host.appendChild(renderer.domElement);
   try {
@@ -3976,18 +4086,50 @@ function buildVan() {
   }
   var rBump = box(2.70, 0.50, 0.50, trimD, 0, 0.86, 3.18);
   vanBody.add(rBump);
-  /* ---- TWO exhaust tailpipes, one in each rear bottom corner, in chrome
-     grey, each with a flame jet parked at its mouth (see makeFlameJet). */
-  var chromeM = toon(0xbcc3cc), chromeD = toon(0x8f979f);
+  /* ---- TWO exhaust tailpipes, one in each rear bottom corner ------------
+     A MUFFLER IS A HOLE. The old pair was a light chrome tube capped by a
+     closed light-chrome cylinder, and a closed cylinder's rear cap is a lit
+     disc - which is why the tips read as two white dots from the chase camera
+     instead of as two exhausts.
+     Each pipe is now built as a real open tube:
+       pipe      dark chrome-grey barrel, buried in the chassis at the front
+                 and stopping BEHIND the bore, so its own cap is never seen
+       tip       an OPEN-ENDED shell, slightly flared, one shade darker
+       rim       the flat annular end face, so the tube has a physical lip
+       bore      an unlit BLACK tube seen from the INSIDE (BackSide), running
+                 0.3 units forward into the pipe
+       boreEnd   an unlit BLACK disc closing it off, recessed behind the rim
+     From behind you therefore see a dark ring with a black hole in it that has
+     real depth, and the boost flame's base sits INSIDE that hole. */
+  var pipeM = toon(0x3a3f47);                       // dark chrome grey
+  var pipeD = toon(0x2f343b);                       // tip + rim, one shade down
+  var BORE_END_M = basic(0x08090c);                 // the bottom of the hole
+  var BORE_IN_M = basic(0x08090c, { side: THREE.BackSide });   // its inner wall
   for (var px2 = -1; px2 <= 1; px2 += 2) {
-    var pipe = cyl(0.125, 0.125, 0.66, 10, chromeM, px2 * 0.86, 0.44, 3.24);
-    pipe.rotation.x = Math.PI / 2;
+    var pipe = cyl(0.135, 0.135, 0.50, 12, pipeM, px2 * 0.86, 0.44, 3.07);
+    pipe.rotation.x = Math.PI / 2;                  // z 2.82 .. 3.32
     vanBody.add(pipe);
-    var pipeTip = cyl(0.165, 0.165, 0.14, 10, chromeD, px2 * 0.86, 0.44, 3.57);
-    pipeTip.rotation.x = Math.PI / 2;
-    vanBody.add(pipeTip);
+    var tip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.185, 0.170, 0.20, 14, 1, true), pipeD);
+    tip.rotation.x = Math.PI / 2;                   // z 3.45 .. 3.65
+    tip.position.set(px2 * 0.86, 0.44, 3.55);
+    vanBody.add(tip);
+    var rim = new THREE.Mesh(new THREE.RingGeometry(0.142, 0.186, 14), pipeD);
+    rim.position.set(px2 * 0.86, 0.44, 3.652);      // the lip, facing the camera
+    rim.userData.noOutline = true;
+    vanBody.add(rim);
+    var bore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.145, 0.145, 0.34, 14, 1, true), BORE_IN_M);
+    bore.rotation.x = Math.PI / 2;                  // z 3.29 .. 3.63
+    bore.position.set(px2 * 0.86, 0.44, 3.46);
+    bore.userData.noOutline = true;
+    vanBody.add(bore);
+    var boreEnd = new THREE.Mesh(new THREE.CircleGeometry(0.145, 14), BORE_END_M);
+    boreEnd.position.set(px2 * 0.86, 0.44, 3.34);   // 0.31 in: a hole with depth
+    boreEnd.userData.noOutline = true;
+    vanBody.add(boreEnd);
     var jet = makeFlameJet();
-    jet.position.set(px2 * 0.86, 0.44, 3.60);
+    jet.position.set(px2 * 0.86, 0.44, 3.58);       // the fire starts INSIDE
     vanBody.add(jet);
     flameRigs.push(jet);
   }
@@ -4915,10 +5057,25 @@ function resetVanDamage() {
    scene - the jam, the deck, the bridge ahead - still being rendered.
    ================================================================ */
 var fpCamAnchor = null, fpCabRig = null, fpHandRig = null,
-    fpScreenMesh = null, fpThumbL = null, fpThumbR = null, fpRosary = null;
+    fpScreenMesh = null, fpThumbL = null, fpThumbR = null, fpRosary = null,
+    fpShellMesh = null;
 var FP = { t: 0, thumbL: 0, thumbR: 0 };
 var FP_SCREEN_W = 0.60, FP_SCREEN_H = 0.3375;      // 16:9, unscaled
 var FP_DIST = 0.70;                                // eye to phone, world units
+/* The rig's own extents in LOCAL (unscaled) units. These are not guessed:
+   fpMeasureRig() walks the actual meshes at the end of buildFirstPerson() and
+   fills them in, so if the handset or the hands are ever re-modelled the
+   framing follows automatically. Only the parts that MUST be on screen are
+   measured - shell, bezel, screen, speaker slot and both thumbs; the forearms
+   deliberately run out of the bottom of the picture the way your own arms do.
+   FP_FRONT is the one that matters for the NEAR PLANE: the thumbs stand back
+   toward the face, so at the chase camera's 0.5 near plane they were being
+   sliced clean off - see jamSetFp(), which brings the plane in to 0.12. */
+var FP_TOP = 0.23, FP_BOT = 0.23, FP_HALF_X = 0.42, FP_FRONT = 0.18;
+var fpHandsetParts = [];
+/* the fraction of the frame HEIGHT the on-screen buttons own at the bottom,
+   measured off the real DOM rectangles by fpMeasureReserve() */
+var FP_RESERVE = 0.09;
 
 function fpHand(side) {
   var g = new THREE.Group();
@@ -5066,6 +5223,7 @@ function buildFirstPerson() {
 
   var shell = box(FP_SCREEN_W + 0.09, FP_SCREEN_H + 0.075, 0.035, toon(0x23272e), 0, 0, 0);
   fpHandRig.add(shell);
+  fpShellMesh = shell;
   var bezel = box(FP_SCREEN_W + 0.02, FP_SCREEN_H + 0.02, 0.03, toon(0x11141a), 0, 0, 0.006);
   bezel.userData.noOutline = true;
   fpHandRig.add(bezel);
@@ -5078,38 +5236,125 @@ function buildFirstPerson() {
   var slot = box(0.10, 0.014, 0.02, basic(0x000000), 0, FP_SCREEN_H * 0.5 + 0.026, 0.020);
   slot.userData.noOutline = true;
   fpHandRig.add(slot);
+  fpHandsetParts = [shell, bezel, fpScreenMesh, slot];
 
   var hL = fpHand(-1); hL.position.set(-(FP_SCREEN_W * 0.5 + 0.085), -0.03, -0.01);
   var hR = fpHand(1);  hR.position.set(FP_SCREEN_W * 0.5 + 0.085, -0.03, -0.01);
   fpHandRig.add(hL); fpHandRig.add(hR);
   fpThumbL = hL.userData.thumb; fpThumbR = hR.userData.thumb;
   outlineAll(fpHandRig, 0.007);
+  fpHandsetParts.push(fpThumbL);
+  fpHandsetParts.push(fpThumbR);
+  fpMeasureRig();
+}
+
+/* the handset's real bounding box in fpHandRig's OWN space, outline hulls and
+   all, so fpLayout() is framing what is actually drawn rather than a comment */
+function fpMeasureRig() {
+  try {
+    fpHandRig.updateWorldMatrix(true, true);
+    var inv = new THREE.Matrix4().copy(fpHandRig.matrixWorld).invert();
+    var bb = new THREE.Box3(), tmp = new THREE.Box3(), m = new THREE.Matrix4();
+    bb.makeEmpty();
+    for (var i = 0; i < fpHandsetParts.length; i++) {
+      var root = fpHandsetParts[i];
+      if (!root) continue;
+      root.traverse(function (c) {
+        if (!c.geometry) return;
+        if (!c.geometry.boundingBox) c.geometry.computeBoundingBox();
+        m.multiplyMatrices(inv, c.matrixWorld);
+        tmp.copy(c.geometry.boundingBox).applyMatrix4(m);
+        bb.union(tmp);
+      });
+    }
+    if (!isFinite(bb.min.x) || bb.isEmpty()) return;
+    /* FP_PAD is the idle BREATHING allowance. fpAnimate() bobs the rig by
+       0.006 world units and rolls it by up to ~0.024 rad, which walks the
+       handset's corners a little past wherever fpLayout() parked them - so the
+       box the framing is solved against is the measured one plus that. */
+    var FP_PAD = 0.03;
+    FP_TOP = Math.max(0.05, bb.max.y) + FP_PAD;
+    FP_BOT = Math.max(0.05, -bb.min.y) + FP_PAD;
+    FP_HALF_X = Math.max(0.05, Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x))) + FP_PAD;
+    FP_FRONT = Math.max(0.02, bb.max.z) + FP_PAD;
+  } catch (e) { }
+}
+
+/* ---------------------------------------------------------------------------
+   HOW MUCH OF THE FRAME THE THUMB BUTTONS OWN
+   Measured off the live DOM rectangles rather than guessed at, because the
+   lane buttons, the ROTAR / CAER pair and the safe-area insets all move with
+   the viewport - and in landscape the mini-game buttons sit BESIDE the lane
+   buttons instead of above them, which halves the band. Called from
+   layoutVars() and from updateTouchUI(), i.e. on every resize and on every
+   jam phase change, never per frame.
+   --------------------------------------------------------------------------- */
+function fpMeasureReserve() {
+  var h = window.innerHeight || 1;
+  if (!IS_TOUCH) { FP_RESERVE = 0.09; return FP_RESERVE; }
+  var top = h, ids = ['tLeft', 'tRight', 'tRot', 'tDrop', 'tHonk'], i, el, r;
+  for (i = 0; i < ids.length; i++) {
+    el = $(ids[i]);
+    if (!el) continue;
+    r = null;
+    try { r = el.getBoundingClientRect(); } catch (e) { r = null; }
+    if (!r || !(r.width > 0) || !(r.height > 0)) continue;
+    if (r.top < top) top = r.top;
+  }
+  FP_RESERVE = clamp((h - top) / h + 0.035, 0.08, 0.55);
+  return FP_RESERVE;
 }
 
 /* size and place the hands + phone from the CAMERA's frustum, so a 390-wide
-   portrait phone and a 1600-wide desktop both get a readable screen that sits
-   in the lower part of the frame with the windshield above it */
+   portrait phone, a 390-TALL landscape phone and a 1600-wide desktop all get a
+   readable screen that is fully on screen and clear of the thumb buttons */
 function fpLayout() {
   if (!fpHandRig) return;
   var aspect = camera.aspect || 1;
   var hFull = 2 * FP_DIST * Math.tan(camera.fov * Math.PI / 360);
   var wFull = hFull * aspect;
-  /* The fraction is chosen so the HANDS still fit: a palm's outer edge sits at
-     0.485 of local x against a 0.30 screen half-width, i.e. 1.6x, so anything
-     over ~0.62 of the frame width would push them off the sides. */
-  var s = (wFull * (aspect < 1 ? 0.62 : 0.46)) / FP_SCREEN_W;
-  var maxS = (hFull * 0.42) / FP_SCREEN_H;         // never eat the whole frame
-  if (s > maxS) s = maxS;
-  s = clamp(s, 0.30, 3.0);
+  var reserve = FP_RESERVE;          // the band the on-screen buttons own
+  var topPad = 0.06;                 // and never touch the top edge either
+  var sidePad = 0.06;
+
+  /* PERSPECTIVE MATTERS HERE. The thumbs stand FP_FRONT toward the eye, so
+     they sit in a SMALLER frustum cross-section than the screen plane does and
+     project correspondingly bigger: at the phone's own depth the frustum is
+     (1 - k*s) of what it is at the screen plane. Folding that in turns every
+     "must fit" into extent * s / (1 - k*s) <= limit, which solves in closed
+     form as cap() below - no iteration, no fudge factor.
+
+     FOUR independent caps; the smallest wins:
+       sScreen  how much of the frame width the SCREEN itself should fill
+       sFit     shell + thumbs must stay inside the frame sideways, with margin
+       sH       the whole handset must fit between the button band and the top
+       sNear    and it must stay clear of the camera's near plane, or the
+                thumbs are sliced off by the clip
+     The old code had only the first and a flat "42% of the frame height", and
+     then dragged the result back DOWN with a mid-line cap - which in landscape
+     pushed the handset straight into the button band and off the bottom edge.
+     That cap is gone; what is left clamps the rig's real edges. */
+  var k = FP_FRONT / FP_DIST;
+  function cap(extent, limit) {
+    return limit / Math.max(1e-4, extent + limit * k);
+  }
+  var sScreen = cap(FP_SCREEN_W * 0.5, wFull * 0.5 * (aspect < 1 ? 0.66 : 0.44));
+  var sFit = cap(FP_HALF_X, wFull * 0.5 * (1 - sidePad));
+  var sH = cap(FP_TOP + FP_BOT, hFull * Math.max(0.16, 1 - reserve - topPad));
+  var sNear = (FP_DIST - (camera.near || 0.12) * 1.9) / FP_FRONT;
+  var s = clamp(Math.min(sScreen, sFit, sH, sNear), 0.22, 3.0);
   fpHandRig.scale.setScalar(s);
-  /* Keep the bottom of the frame free. On a touch device the two lane buttons
-     and the ROTAR / CAER row live down there, and a handset drawn over them
-     would be a phone you cannot play. The reserve is a fraction of the FRAME,
-     so it holds at any aspect and needs no vh anywhere. */
-  var half = FP_SCREEN_H * s * 0.5;
-  var y = -hFull * 0.5 + hFull * (IS_TOUCH ? 0.32 : 0.09) + half + 0.012;
-  var topCap = hFull * 0.05 - half;                // never past the mid-line
-  if (y > topCap) y = topCap;
+
+  /* Place it. Both limits are expressed in NDC and converted back through the
+     same (1 - k*s) frustum shrink, so the clamp is on where the handset's real
+     top and bottom EDGES land on screen, not on where its centre does. sH
+     guarantees the two can always both be satisfied. */
+  var pz = Math.max(0.35, 1 - k * s);
+  var ceilY = hFull * 0.5 * (1 - 2 * topPad) * pz - FP_TOP * s;
+  var floorY = hFull * 0.5 * (-1 + 2 * reserve) * pz + FP_BOT * s;
+  var y = floorY + hFull * 0.02;
+  if (y > ceilY) y = ceilY;
+  if (y < floorY) y = floorY;
   fpHandRig.userData.baseY = y;
   fpHandRig.position.set(0, y, -FP_DIST);
 }
@@ -5797,6 +6042,16 @@ function jamSetPhase(p) {
 
 function jamSetFp(on) {
   JAM.fp = !!on;
+  /* THE NEAR PLANE.
+     The chase camera runs a 0.5 near plane and the handset is held 0.70 in
+     front of the eye - so the thumbs, which come 0.17 back toward the face,
+     were landing at ~0.49 and being cut off by the clip whenever the rig
+     scaled up. Inside the cab the plane comes in to 0.12; it goes straight
+     back to 0.5 on the way out, so nothing else in the game pays for it. */
+  if (camera) {
+    var wantNear = on ? 0.12 : 0.5;
+    if (camera.near !== wantNear) { camera.near = wantNear; camera.updateProjectionMatrix(); }
+  }
   if (fpCabRig) fpCabRig.visible = !!on;
   if (fpHandRig) fpHandRig.visible = !!on;
   if (driverRig) driverRig.visible = !on;
@@ -5811,6 +6066,7 @@ function jamSetFp(on) {
   }
   invalidateHudRects();
   updateTouchUI();
+  if (on) fpLayout();
 }
 function jamFadeApply() {
   var f = $('jamFade');
@@ -10263,6 +10519,11 @@ function bindInput() {
   // touch first, mouse as the fallback (never both for one gesture)
   window.addEventListener('touchstart', function (e) {
     usingTouch = true;
+    /* THE FIRST REAL GESTURE. A fullscreen request is only granted from
+       inside a user-gesture handler, so it has to happen here rather than
+       later in screenUp / startRun. Failures (iPhone Safari has no Fullscreen
+       API) are swallowed inside tryFullscreen. */
+    if (GAME.state === 'TITLE') fsOnFirstGesture();
     var t = e.changedTouches[0];
     screenDown(t.clientX, t.clientY, e.target);
     // never swallow a tap that landed on a real button (the buttons handle
@@ -10308,6 +10569,23 @@ function bindInput() {
     setTimeout(onResize, 250);
     setTimeout(onResize, 600);
   }, false);
+  /* the address bar collapsing changes innerHeight on BOTH platforms without
+     ever firing a window resize on some of them - visualViewport does fire */
+  try {
+    if (window.visualViewport && window.visualViewport.addEventListener) {
+      window.visualViewport.addEventListener('resize', onResize, false);
+      window.visualViewport.addEventListener('scroll', onResize, false);
+    }
+  } catch (eVV) { }
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) {
+    try {
+      document.addEventListener(ev, function () {
+        syncFsUI();
+        onResize();
+        setTimeout(onResize, 220);
+      }, false);
+    } catch (eFS) { }
+  });
 
   bindTapButton($('tLeft'), function () { doLaneInput(-1); });
   bindTapButton($('tRight'), function () { doLaneInput(1); });
@@ -10316,6 +10594,7 @@ function bindInput() {
     else if (GAME.state === 'PLAYING') honk();
   });
   bindTapButton($('tPause'), function () { togglePause(); });
+  bindTapButton($('tFull'), function () { toggleFullscreen(); });
   bindTapButton($('tRot'), function () { if (jamPhoneActive()) tetRotate(); });
   bindTapButton($('tDrop'), function () { if (jamPhoneActive()) tetHardDrop(); });
 
@@ -10336,29 +10615,229 @@ function bindInput() {
   uiBtn('btnMusic2', function () { toggleMusic(); });
 }
 
+/* ================================================================
+   12b. FULLSCREEN, THE STANDALONE APP ICON, AND THE VIEWPORT VARIABLES
+   ================================================================ */
+function bodyClass(name, on) {
+  try {
+    var b = document.body;
+    if (!b) return;
+    var c = (' ' + (b.className || '') + ' ').split(' ' + name + ' ').join(' ');
+    b.className = (on ? (c + ' ' + name) : c).replace(/\s+/g, ' ').replace(/^ | $/g, '');
+  } catch (e) { }
+}
+function fsElement() {
+  try { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  catch (e) { return null; }
+}
+function fsSupported() {
+  try {
+    var el = document.documentElement;
+    return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
+              el.requestFullscreen || el.webkitRequestFullscreen);
+  } catch (e) { return false; }
+}
+/* Ask for real fullscreen. Android Chrome grants this from inside a user
+   gesture and the browser bar goes away; iPhone Safari has no Fullscreen API
+   at all and simply fails here, which is what the home-screen tip is for.
+   The orientation lock is a bonus - it is refused on most desktops and on iOS,
+   and the rejection is swallowed. */
+var FS_ASKED = false;
+function tryFullscreen(force) {
+  if (!force && !IS_TOUCH) return false;
+  if (!fsSupported()) return false;
+  if (fsElement()) return true;
+  var el = document.documentElement, p = null;
+  try {
+    if (el.requestFullscreen) p = el.requestFullscreen({ navigationUI: 'hide' });
+    else if (el.webkitRequestFullscreen) p = el.webkitRequestFullscreen();
+  } catch (e) {
+    try { if (el.requestFullscreen) p = el.requestFullscreen(); } catch (e2) { p = null; }
+  }
+  try { if (p && p.catch) p.catch(function () { }); } catch (e3) { }
+  try {
+    if (window.screen && screen.orientation && screen.orientation.lock) {
+      var q = screen.orientation.lock('landscape');
+      if (q && q.catch) q.catch(function () { });
+    }
+  } catch (e4) { }
+  return true;
+}
+function fsExit() {
+  try {
+    if (document.exitFullscreen) {
+      var p = document.exitFullscreen();
+      if (p && p.catch) p.catch(function () { });
+    } else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch (e) { }
+}
+function toggleFullscreen() {
+  if (fsElement()) { fsExit(); return false; }
+  return tryFullscreen(true);
+}
+function syncFsUI() {
+  bodyClass('fsapi', fsSupported());
+  bodyClass('fs', !!fsElement());
+}
+/* the first gesture that starts a run is also the one that may go fullscreen */
+function fsOnFirstGesture() {
+  if (FS_ASKED) return;
+  FS_ASKED = true;
+  tryFullscreen(false);
+}
+
+/* ---------------- the iOS "add to home screen" tip ---------------- */
+var IOS_TIP_KEY = 'rr_iostip_v1';
+function isIOS() {
+  try {
+    var ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return true;
+    // iPadOS 13+ calls itself a Macintosh; a real Mac has no touch screen
+    if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return true;
+  } catch (e) { }
+  return false;
+}
+function iosStandalone() {
+  try {
+    if (navigator.standalone) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+  } catch (e) { }
+  return false;
+}
+function iosTipSeen() {
+  try { return window.localStorage.getItem(IOS_TIP_KEY) === '1'; } catch (e) { return false; }
+}
+function showIosTip(on) {
+  var el = $('iosTip');
+  if (el) el.className = on ? 'on' : '';
+  return !!on;
+}
+function initIosTip() {
+  var el = $('iosTip');
+  if (!el) return;
+  el.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    try { window.localStorage.setItem(IOS_TIP_KEY, '1'); } catch (e) { }
+    showIosTip(false);
+  }, false);
+  if (IOS_TIP_URL === 1) { showIosTip(true); return; }
+  if (IOS_TIP_URL === -1) return;
+  if (isIOS() && !iosStandalone() && !iosTipSeen()) showIosTip(true);
+}
+
+/* ---------------- the home-screen icon, drawn at boot ---------------- */
+/* 180x180, the white RESCO van's nose on a blue-to-orange ground, straight
+   out of a canvas - there is no image file anywhere in this game. */
+function makeAppIconDataURL() {
+  var S = 180, c = cv(S, S), g = c.getContext('2d');
+  var grd = g.createLinearGradient(0, 0, S, S);
+  grd.addColorStop(0.00, '#1E5BFF');
+  grd.addColorStop(0.52, '#2E6FD6');
+  grd.addColorStop(1.00, '#FF7A00');
+  g.fillStyle = grd; g.fillRect(0, 0, S, S);
+  // a warm sun band behind the van
+  g.fillStyle = 'rgba(255,196,74,0.35)';
+  g.fillRect(0, S * 0.52, S, S * 0.20);
+  // --- the van's nose, straight on: windshield, hood, bumper, lights
+  g.lineJoin = 'round';
+  g.strokeStyle = '#14181f'; g.lineWidth = 7;
+  g.fillStyle = '#ffffff';
+  g.beginPath(); g.moveTo(S * 0.20, S * 0.20); g.lineTo(S * 0.80, S * 0.20);
+  g.lineTo(S * 0.80, S * 0.64); g.lineTo(S * 0.20, S * 0.64); g.closePath();
+  g.fill(); g.stroke();
+  g.fillStyle = '#2b4d86';
+  g.beginPath(); g.moveTo(S * 0.26, S * 0.25); g.lineTo(S * 0.74, S * 0.25);
+  g.lineTo(S * 0.74, S * 0.42); g.lineTo(S * 0.26, S * 0.42); g.closePath();
+  g.fill(); g.stroke();
+  g.fillStyle = '#14181f';
+  g.fillRect(S * 0.28, S * 0.47, S * 0.44, S * 0.05);           // grille recess
+  g.fillStyle = '#FFE277';
+  g.fillRect(S * 0.22, S * 0.455, S * 0.05, S * 0.05);          // headlights
+  g.fillRect(S * 0.73, S * 0.455, S * 0.05, S * 0.05);
+  g.fillStyle = '#efefef';
+  g.beginPath(); g.rect(S * 0.17, S * 0.575, S * 0.66, S * 0.065); g.fill(); g.stroke();
+  // --- the emblem and the wordmark
+  drawEmblem(g, S * 0.05, S * 0.04, S * 0.22);
+  inkText(g, 'RESCO', S / 2, S * 0.815, S * 0.84, 46, '#ffffff', 9);
+  return c.toDataURL('image/png');
+}
+function injectAppIcon() {
+  try {
+    var href = makeAppIconDataURL();
+    var head = document.head || document.getElementsByTagName('head')[0];
+    if (!head) return;
+    var a = document.createElement('link');
+    a.setAttribute('rel', 'apple-touch-icon');
+    a.setAttribute('sizes', '180x180');
+    a.setAttribute('href', href);
+    head.appendChild(a);
+    var b = document.createElement('link');
+    b.setAttribute('rel', 'icon');
+    b.setAttribute('type', 'image/png');
+    b.setAttribute('href', href);
+    head.appendChild(b);
+  } catch (e) { }
+}
+
 function pixelRatio() {
   var dpr = window.devicePixelRatio || 1;
   return Math.min(dpr, IS_MOBILE ? 1.5 : 2);
 }
-function hudScale() {
+function hudScale(w, h) {
   /* 0.64 rather than 0.56 at the bottom end: below that a 390-wide phone
      shrinks the HUD labels under 9 px and they stop being readable. The three
      top boxes still fit side by side at 0.64 (89 + 141 + 90 of 390). */
-  var m = Math.min(window.innerWidth, window.innerHeight);
+  var m = Math.min(w || window.innerWidth || 1, h || window.innerHeight || 1);
   return clamp(m / 760, 0.64, 1);
+}
+/* ---------------------------------------------------------------------------
+   THE VIEWPORT VARIABLES
+   Everything about the on-screen furniture that depends on the real pixel size
+   of the window is computed here, off innerWidth / innerHeight - never off vh,
+   which a mobile browser changes under you when its bar collapses, and never
+   off a media query, which cannot see a safe-area inset.
+   --------------------------------------------------------------------------- */
+function layoutVars(wIn, hIn) {
+  var w = wIn || window.innerWidth || 1, h = hIn || window.innerHeight || 1;
+  var land = w > h * 1.05;
+  var st = document.documentElement.style;
+  /* LANDSCAPE ON A PHONE: the browser's own bar (and the notch) can sit over
+     the top of the page, so the whole top HUD row moves down out of the top
+     8% of the frame. env(safe-area-inset-top) is added on top of this in the
+     CSS, so a notch pushes it further still. */
+  st.setProperty('--topsafe', (IS_TOUCH && land ? Math.round(h * 0.085) : 0) + 'px');
+  var lane = clamp(Math.round(Math.min(w * (land ? 0.20 : 0.26), 138, h * 0.30)), 56, 138);
+  st.setProperty('--lanebtn', lane + 'px');
+  st.setProperty('--rowbtn', clamp(Math.round(Math.min(w * 0.13, 62, h * 0.16)), 34, 62) + 'px');
+  st.setProperty('--hs', hudScale(w, h).toFixed(3));
+  bodyClass('land', land);
+  fpMeasureReserve();
+}
+/* the size the canvas was LAST built for. viewportWatch() compares it against
+   the live innerWidth / innerHeight once per frame, because a resize event is
+   not something every browser can be relied on to send - iOS fires none at all
+   when the address bar collapses, and an embedded frame may report 0 x 0 until
+   after boot. One integer compare a frame buys a canvas that is never stale. */
+var VIEW_W = -1, VIEW_H = -1;
+function viewportWatch() {
+  if (!renderer) return;
+  if (window.innerWidth !== VIEW_W || window.innerHeight !== VIEW_H) onResize();
 }
 function onResize() {
   if (!renderer) return;
   // innerWidth/innerHeight, never 100vh (iOS Safari lies about vh)
-  var w = window.innerWidth, h = window.innerHeight;
+  var w = window.innerWidth || 1, h = window.innerHeight || 1;
+  VIEW_W = window.innerWidth; VIEW_H = window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(w, h, false);
-  renderer.domElement.style.width = '100%';
-  renderer.domElement.style.height = '100%';
-  document.documentElement.style.setProperty('--hs', hudScale().toFixed(3));
+  renderer.domElement.style.width = w + 'px';
+  renderer.domElement.style.height = h + 'px';
+  layoutVars(w, h);
+  syncFsUI();
   invalidateHudRects();          // the HUD panels just moved
+  if (JAM.fp) fpLayout();
 }
 
 /* ================================================================
@@ -10684,6 +11163,9 @@ function updateTouchUI() {
   // own above the lane buttons, so nothing sits over the handset
   else if (GAME.state === 'PLAYING') el.className = jamPhoneActive() ? 'on jam' : 'on';
   else el.className = '';
+  // the buttons just appeared / moved / swapped: re-measure the band the
+  // first-person handset has to stay above
+  fpMeasureReserve();
 }
 /* pulse the lane buttons a couple of times at the start of a run */
 function teachLaneButtons() {
@@ -11803,6 +12285,7 @@ function frame(dt, tAbs) {
   // the van forward. 50 ms is the maximum step the sim will ever be given.
   if (!(dt > 0)) dt = 0.0001;
   if (dt > 0.05) dt = 0.05;
+  viewportWatch();               // the canvas always matches innerW x innerH
   WORLD_T += dt;
   var t = (tAbs === undefined) ? WORLD_T : tAbs;
 
@@ -11978,7 +12461,10 @@ function boot() {
   buildHeli();
 
   if (IS_TOUCH) document.body.className = (document.body.className + ' touch').trim();
-  document.documentElement.style.setProperty('--hs', hudScale().toFixed(3));
+  layoutVars();
+  syncFsUI();
+  injectAppIcon();
+  initIosTip();
 
   try {
     $('fx-speed').style.backgroundImage = 'url(' + makeSpeedLinesDataURL() + ')';
@@ -12002,6 +12488,8 @@ function boot() {
   streamCourse(GAME.dist);
   updateHUD(true);
   updateTouchUI();
+
+  onResize();                // canvas, HUD vars and the button band, once
 
   var best = loadBest();
   if (isFinite(best)) $('rBest').textContent = fmtTime(best);
@@ -12182,8 +12670,37 @@ function boot() {
         ];
         var ndc = corners.map(function (c) { var v = c.clone().project(camera); return { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) }; });
         fpScreenMesh.getWorldPosition(sp);
+        /* the WHOLE handset - shell, bezel and both thumbs - projected into
+           NDC, plus how close its nearest point gets to the camera. |x| and
+           |y| must stay under 1 (it is on screen) and minDepth must stay above
+           camera.near (it is not sliced by the clip). */
+        var hs = null, minDepth = null;
+        try {
+          camera.updateMatrixWorld(true);
+          camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+          var hb = new THREE.Box3();
+          [fpShellMesh, fpThumbL, fpThumbR].forEach(function (o) { if (o) hb.expandByObject(o); });
+          var lox = 1e9, hix = -1e9, loy = 1e9, hiy = -1e9, dmin = 1e9, ci, cj, ck;
+          for (ci = 0; ci < 2; ci++) for (cj = 0; cj < 2; cj++) for (ck = 0; ck < 2; ck++) {
+            var pt = new THREE.Vector3(ci ? hb.max.x : hb.min.x,
+                                       cj ? hb.max.y : hb.min.y,
+                                       ck ? hb.max.z : hb.min.z);
+            var cam = pt.clone().applyMatrix4(camera.matrixWorldInverse);
+            if (-cam.z < dmin) dmin = -cam.z;
+            var q = pt.clone().project(camera);
+            if (q.x < lox) lox = q.x; if (q.x > hix) hix = q.x;
+            if (q.y < loy) loy = q.y; if (q.y > hiy) hiy = q.y;
+          }
+          hs = { x0: +lox.toFixed(3), x1: +hix.toFixed(3),
+                 y0: +loy.toFixed(3), y1: +hiy.toFixed(3) };
+          minDepth = +dmin.toFixed(3);
+        } catch (eH) { hs = null; }
         return {
           fp: JAM.fp,
+          handsetNDC: hs, minDepth: minDepth,
+          near: +camera.near.toFixed(3), reserve: +FP_RESERVE.toFixed(3),
+          rig: { top: +FP_TOP.toFixed(4), bot: +FP_BOT.toFixed(4),
+                 halfX: +FP_HALF_X.toFixed(4), front: +FP_FRONT.toFixed(4) },
           rigVisible: !!fpHandRig.visible, cabVisible: !!fpCabRig.visible,
           scale: +fpHandRig.scale.x.toFixed(4),
           localY: +fpHandRig.position.y.toFixed(4), localZ: +fpHandRig.position.z.toFixed(4),
@@ -12223,6 +12740,46 @@ function boot() {
       get touch() { return IS_TOUCH; },
       get mobile() { return IS_MOBILE; },
       get dpr() { return pixelRatio(); },
+      /* --- viewport / safe-area / fullscreen state ---
+         `tops` is where each top-row element actually starts, in CSS pixels;
+         on a phone in landscape every one of them must be past `top8`. */
+      get layout() {
+        var w = window.innerWidth || 1, h = window.innerHeight || 1;
+        var cs = null;
+        try { cs = window.getComputedStyle ? getComputedStyle(document.documentElement) : null; } catch (eL) { cs = null; }
+        function vv(n) { return cs ? ('' + cs.getPropertyValue(n)).trim() : ''; }
+        function topOf(id) {
+          var el = $(id); if (!el) return null;
+          var r = null;
+          try { r = el.getBoundingClientRect(); } catch (e) { return null; }
+          return (r && r.width > 0 && r.height > 0) ? +r.top.toFixed(1) : null;
+        }
+        var de = renderer ? renderer.domElement : null;
+        return {
+          w: w, h: h, land: w > h * 1.05, touch: IS_TOUCH,
+          topsafe: vv('--topsafe'), lanebtn: vv('--lanebtn'),
+          rowbtn: vv('--rowbtn'), hs: vv('--hs'),
+          bodyClass: document.body ? document.body.className : '',
+          reserve: +FP_RESERVE.toFixed(3),
+          top8: Math.round(h * 0.08),
+          tops: { timer: topOf('timerBox'), prog: topOf('progWrap'), hits: topOf('hitsBox'),
+                  coin: topOf('coinBox'), mus: topOf('musBox'),
+                  pause: topOf('tPause'), full: topOf('tFull') },
+          canvasCss: de ? [de.style.width, de.style.height] : null,
+          canvasPx: de ? [de.width, de.height] : null,
+          fsApi: fsSupported(), fsOn: !!fsElement(),
+          iosTip: !!($('iosTip') && $('iosTip').className.indexOf('on') >= 0),
+          iosUA: isIOS(), standalone: iosStandalone(),
+          near: camera ? camera.near : null, far: camera ? camera.far : null
+        };
+      },
+      fullscreen: function (on) {
+        if (on === undefined) return toggleFullscreen();
+        if (on) return tryFullscreen(true);
+        fsExit(); return false;
+      },
+      iosTip: function (on) { return showIosTip(!!on); },
+      relayout: function () { onResize(); return true; },
       get x() { return GAME.x; },
       get vy() { return GAME.vy; },
       get errors() { return ERR_COUNT; },
