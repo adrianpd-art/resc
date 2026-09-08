@@ -1369,7 +1369,7 @@ var RIM_SHELLS = [];
 /* masses: [w,h,d,x,y,z] boxes that make up the silhouette */
 function addRimShell(parent, masses, color) {
   var mat = rimMaterial(color === undefined ? 0xffb35a : color);
-  var n = IS_MOBILE ? Math.min(2, masses.length) : masses.length;
+  var n = masses.length;
   for (var i = 0; i < n; i++) {
     var M = masses[i];
     var m = new THREE.Mesh(new THREE.BoxGeometry(M[0] * 1.008, M[1] * 1.008, M[2] * 1.008), mat);
@@ -1428,6 +1428,173 @@ function outlineAll(root, width, color) {
   for (var i = 0; i < list.length; i++) addOutline(list[i], width, color);
   return root;
 }
+/* ---------------------------------------------------------------------------
+   STATIC GEOMETRY MERGE   -   the slice of BufferGeometryUtils this game needs
+
+   three.js core carries no merge helper, and this bridge is built out of tens
+   of thousands of little boxes: ONE deck segment is ~480 meshes (four girders
+   x 80 bottom-flange pieces, 160 cross braces, the long slabs and rails and an
+   inverted-hull outline for most of them), and there are three of them. That
+   was costing >4,300 draw calls a frame at 390x844 - which a desktop GPU
+   shrugs off and an iPhone absolutely does not.
+
+   mergeStatic(root, chunkLen) walks a group, bakes each static mesh's matrix
+   into its vertices and concatenates everything that shares a MATERIAL (and a
+   renderOrder, and - when chunkLen is given - a slice of Z) into a single
+   BufferGeometry. The result is put back in place of the originals, so every
+   caller keeps working on the same group object.
+
+   Nothing that moves is touched. A mesh - or a whole group - is KEPT, with its
+   exact object identity and its entire subtree, when it is invisible or
+   carries userData.noMerge / .banner / .lampCone / .neon. Kept subtrees are
+   re-parented to `root` with their transform baked in, so code that reads
+   root.children later (updateWorld's banner sweep, CUSTOMS.*, LAMP_CONES)
+   still finds exactly the objects it registered.
+
+   chunkLen splits a long group along Z so frustum culling still works: a
+   1,600-unit deck merged into ONE mesh would never be culled and would push
+   its whole triangle count through the vertex shader every frame.
+   --------------------------------------------------------------------------- */
+var MERGE_STATS = { groups: 0, before: 0, after: 0 };
+
+function mergeKeepable(o) {
+  var u = o.userData;
+  return (o.visible === false) || !!(u && (u.noMerge || u.banner || u.lampCone || u.neon));
+}
+function mergeableMesh(o) {
+  if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return false;
+  var g = o.geometry, m = o.material;
+  if (!g || !g.isBufferGeometry || !g.attributes || !g.attributes.position) return false;
+  if (!m || Array.isArray(m)) return false;
+  if (g.morphAttributes && g.morphAttributes.position) return false;
+  return true;
+}
+/* concatenate a list of {g: BufferGeometry, m: Matrix4} into one geometry */
+function mergeGeoList(list) {
+  var i, j, total = 0, idxTotal = 0;
+  for (i = 0; i < list.length; i++) {
+    var gg = list[i].g;
+    total += gg.attributes.position.count;
+    idxTotal += gg.index ? gg.index.count : gg.attributes.position.count;
+  }
+  if (!total) return null;
+  var POS = new Float32Array(total * 3);
+  var NOR = new Float32Array(total * 3);
+  var UV = new Float32Array(total * 2);
+  var IDX = (total > 65535) ? new Uint32Array(idxTotal) : new Uint16Array(idxTotal);
+  var nm = new THREE.Matrix3(), v = new THREE.Vector3();
+  var vo = 0, io = 0;
+  for (i = 0; i < list.length; i++) {
+    var g = list[i].g, mtx = list[i].m;
+    nm.getNormalMatrix(mtx);
+    var ap = g.attributes.position, an = g.attributes.normal, au = g.attributes.uv;
+    var n = ap.count, idx = g.index;
+    for (j = 0; j < n; j++) {
+      v.set(ap.getX(j), ap.getY(j), ap.getZ(j)).applyMatrix4(mtx);
+      POS[(vo + j) * 3] = v.x; POS[(vo + j) * 3 + 1] = v.y; POS[(vo + j) * 3 + 2] = v.z;
+      if (an) {
+        v.set(an.getX(j), an.getY(j), an.getZ(j)).applyMatrix3(nm);
+        if (v.lengthSq() > 1e-12) v.normalize();
+        NOR[(vo + j) * 3] = v.x; NOR[(vo + j) * 3 + 1] = v.y; NOR[(vo + j) * 3 + 2] = v.z;
+      }
+      if (au) { UV[(vo + j) * 2] = au.getX(j); UV[(vo + j) * 2 + 1] = au.getY(j); }
+    }
+    if (idx) { for (j = 0; j < idx.count; j++) IDX[io + j] = idx.getX(j) + vo; io += idx.count; }
+    else { for (j = 0; j < n; j++) IDX[io + j] = j + vo; io += n; }
+    vo += n;
+  }
+  var out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(POS, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(NOR, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
+  out.setIndex(new THREE.BufferAttribute(IDX, 1));
+  out.computeBoundingSphere();
+  out.computeBoundingBox();
+  return out;
+}
+function mergeStatic(root, chunkLen) {
+  if (!root || !root.children || !root.children.length) return root;
+  root.updateMatrixWorld(true);
+  var rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  var buckets = {}, order = [], keep = [], before = 0;
+  var tmpM = new THREE.Matrix4(), ctr = new THREE.Vector3();
+
+  function walk(o) {
+    if (o !== root) {
+      if (mergeKeepable(o)) {
+        tmpM.copy(rootInv).multiply(o.matrixWorld);
+        keep.push({ o: o, m: tmpM.clone() });
+        return;                       // the whole subtree travels with it
+      }
+      /* anything that is NOT a drawable and has no children of its own is a
+         marker the game looks up later - exhaustAnchor, a SpotLight, a light
+         target - and must survive the rebuild with its transform intact */
+      if (!o.isMesh && !o.isPoints && !o.isLine && !o.isSprite && !o.children.length) {
+        tmpM.copy(rootInv).multiply(o.matrixWorld);
+        keep.push({ o: o, m: tmpM.clone() });
+        return;
+      }
+      if (o.isMesh || o.isPoints || o.isLine || o.isSprite) {
+        before++;
+        if (mergeableMesh(o)) {
+          tmpM.copy(rootInv).multiply(o.matrixWorld);
+          var ck = 0;
+          if (chunkLen > 0) {
+            if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+            o.geometry.boundingBox.getCenter(ctr).applyMatrix4(tmpM);
+            ck = Math.floor(ctr.z / chunkLen);
+          }
+          var key = o.material.uuid + '|' + o.renderOrder + '|' + ck;
+          var b = buckets[key];
+          if (!b) { b = buckets[key] = { mat: o.material, ro: o.renderOrder, ud: o.userData, list: [] }; order.push(key); }
+          b.list.push({ g: o.geometry, m: tmpM.clone() });
+        } else {
+          tmpM.copy(rootInv).multiply(o.matrixWorld);
+          keep.push({ o: o, m: tmpM.clone() });
+          return;
+        }
+      }
+    }
+    var snap = o.children.slice();
+    for (var i = 0; i < snap.length; i++) walk(snap[i]);
+  }
+  walk(root);
+  if (!order.length) return root;
+
+  var merged = [], k;
+  for (k = 0; k < order.length; k++) {
+    var bk = buckets[order[k]];
+    var geo = mergeGeoList(bk.list);
+    if (!geo) continue;
+    var mesh = new THREE.Mesh(geo, bk.mat);
+    mesh.renderOrder = bk.ro;
+    mesh.userData.merged = 1;
+    /* the two userData flags anything downstream actually reads off a static
+       mesh: the road surface (retinted by NOCHE / LLUVIA) and the outline
+       marker (so the van's red impact flash still finds its own strokes) */
+    if (bk.ud) {
+      if (bk.ud.roadSurface) mesh.userData.roadSurface = 1;
+      if (bk.ud.isOutline) mesh.userData.isOutline = 1;
+      if (bk.ud.noOutline) mesh.userData.noOutline = 1;
+    }
+    merged.push(mesh);
+  }
+  for (k = root.children.length - 1; k >= 0; k--) root.remove(root.children[k]);
+  for (k = 0; k < merged.length; k++) root.add(merged[k]);
+  var p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  for (k = 0; k < keep.length; k++) {
+    keep[k].m.decompose(p, q, s);
+    keep[k].o.position.copy(p);
+    keep[k].o.quaternion.copy(q);
+    keep[k].o.scale.copy(s);
+    root.add(keep[k].o);
+  }
+  MERGE_STATS.groups++;
+  MERGE_STATS.before += before;
+  MERGE_STATS.after += merged.length + keep.length;
+  return root;
+}
+
 // quick box helper
 function box(w, h, d, mat, x, y, z) {
   var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -2098,7 +2265,10 @@ var SKY_COLOR = null;   // built in boot(), after the THREE guard
 
 function initThree() {
   var host = $('game');
-  renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreference: 'high-performance' });
+  /* MSAA only below DPR 2: at 2 the extra samples buy almost nothing on a
+     phone screen and cost real bandwidth, which is the one thing a phone GPU
+     is short of. */
+  renderer = new THREE.WebGLRenderer({ antialias: pixelRatio() < 2, powerPreference: 'high-performance' });
   renderer.setPixelRatio(pixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   /* explicit pixels, re-measured on every resize / orientationchange /
@@ -2110,7 +2280,7 @@ function initThree() {
   renderer.setClearColor(0xffb877, 1);
   host.appendChild(renderer.domElement);
   try {
-    MAXANISO = Math.min(IS_MOBILE ? 4 : 8, renderer.capabilities.getMaxAnisotropy() || 4);
+    MAXANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy() || 4);
   } catch (eA) { MAXANISO = 4; }
 
   scene = new THREE.Scene();
@@ -2214,7 +2384,10 @@ function buildSky() {
   CLOUD_TEX = makeCloudTexture();
   var cloudMat = new THREE.MeshBasicMaterial({ map: CLOUD_TEX, transparent: true, depthWrite: false, fog: false, opacity: 0.95 });
   var r = makeRNG(4242);
-  var nClouds = IS_MOBILE ? 8 : 16;
+  /* every scenery count below is now the DESKTOP one on every device: all of
+     this geometry is merged, so a phone pays for the triangles and not for the
+     draw calls, and stripping the sky was costing the look for nothing. */
+  var nClouds = 16;
   for (var i = 0; i < nClouds; i++) {
     var s = 70 + r() * 130;
     var cl = new THREE.Mesh(new THREE.PlaneGeometry(s * 2.2, s), cloudMat);
@@ -2223,14 +2396,16 @@ function buildSky() {
     cl.position.set(Math.sin(ang) * rad, 110 + r() * 220, -Math.abs(Math.cos(ang)) * rad - 120);
     cl.renderOrder = -80;
     cl.userData.drift = 1.5 + r() * 3;
+    cl.userData.thin = (i % 2 === 1);       // the half that goes under load
     skyGroup.add(cl);
+    CLOUDS.push(cl);
   }
   /* SECOND CLOUD LAYER: higher, bigger, paler, and drifting a third as fast,
      so the sky has real parallax depth instead of one flat band of blobs. */
   var farMat = new THREE.MeshBasicMaterial({ map: CLOUD_TEX, transparent: true,
     depthWrite: false, fog: false, opacity: 0.42, color: 0xffd9b0 });
   CLOUD_FAR_MAT = farMat;
-  var nFar = IS_MOBILE ? 6 : 12;
+  var nFar = 12;
   for (var j = 0; j < nFar; j++) {
     var s2 = 190 + r() * 260;
     var cf = new THREE.Mesh(new THREE.PlaneGeometry(s2 * 2.4, s2), farMat);
@@ -2239,11 +2414,13 @@ function buildSky() {
     cf.position.set(Math.sin(ang2) * rad2, 190 + r() * 300, -Math.abs(Math.cos(ang2)) * rad2 - 260);
     cf.renderOrder = -85;
     cf.userData.drift = 0.5 + r() * 0.9;
+    cf.userData.thin = (j % 2 === 1);
     skyGroup.add(cf);
+    CLOUDS.push(cf);
   }
   /* the NOCHE star field: one Points cloud, hidden by day */
   var sg = new THREE.BufferGeometry();
-  var nSt = IS_MOBILE ? 220 : 460, pos = new Float32Array(nSt * 3);
+  var nSt = 460, pos = new Float32Array(nSt * 3);
   for (var k = 0; k < nSt; k++) {
     var th = r() * Math.PI * 2, ph = Math.acos(clamp(r() * 0.94 + 0.06, -1, 1));
     var rr2 = 1180;
@@ -2306,7 +2483,7 @@ function buildWater() {
   });
   // the sea runs from well behind the start up to the US shoreline and stops
   var WLEN = CFG.SHORE_D + 1400;
-  var g = new THREE.PlaneGeometry(3400, WLEN, IS_MOBILE ? 30 : 60, IS_MOBILE ? 40 : 80);
+  var g = new THREE.PlaneGeometry(3400, WLEN, 60, 80);
   waterMesh = new THREE.Mesh(g, waterMat);
   waterMesh.rotation.x = -Math.PI / 2;
   waterMesh.position.set(0, -13, -(CFG.SHORE_D - WLEN * 0.5));
@@ -2321,7 +2498,7 @@ function buildBackdrop() {
   var g1 = toon(COL.hill, { flat: true });
   var g2 = toon(COL.hill2, { flat: true });
   var grp = new THREE.Group();
-  var nHills = IS_MOBILE ? 16 : 26;
+  var nHills = 26;
   for (var i = 0; i < nHills; i++) {
     var side = (i % 2 === 0) ? -1 : 1;
     var d = -200 - r() * (CFG.SHORE_D - 300);
@@ -2335,7 +2512,7 @@ function buildBackdrop() {
   /* A THIRD, FURTHEST HILL LAYER, washed most of the way toward the sky
      colour. Two layers read as "hills"; three read as distance. */
   var g3 = toon(0x8e7fa8, { flat: true });
-  var nFarHills = IS_MOBILE ? 10 : 16;
+  var nFarHills = 16;
   for (var fh = 0; fh < nFarHills; fh++) {
     var fside = (fh % 2 === 0) ? -1 : 1;
     var fd = -260 - r() * (CFG.SHORE_D - 200);
@@ -2352,7 +2529,7 @@ function buildBackdrop() {
   var cityMat = toon(0x7a5a72, { flat: true });
   var cityMat2 = toon(0x9a7466, { flat: true });
   var cityMatUS = toon(0x6a6a8e, { flat: true });
-  var nCity = IS_MOBILE ? 22 : 40;
+  var nCity = 40;
   for (var k = 0; k < nCity; k++) {
     var sd = (k % 2 === 0) ? -1 : 1;
     var mx = (k < nCity * 0.5);
@@ -2366,7 +2543,7 @@ function buildBackdrop() {
     b.position.set(bx, bh * 0.5 + baseY, near - r() * 420);
     grp.add(b);
   }
-  worldRoot.add(grp);
+  worldRoot.add(mergeStatic(grp, 400));
 }
 
 /* ================================================================
@@ -2578,7 +2755,9 @@ function buildDeckSegment(len, opts) {
     hand2.userData.noOutline = true;
     g.add(hand2);
   }
-  return g;
+  /* ~480 little meshes become ~10 per 200-unit slice of deck. Chunked rather
+     than merged whole so the far end of a 1,600-unit segment is still culled. */
+  return mergeStatic(g, 200);
 }
 
 /* a road that sits on the ground (US side) - no under-deck, just kerbs */
@@ -2604,7 +2783,7 @@ function buildLandRoadSegment(len) {
     addOutline(kerb, 0.06);
     g.add(kerb);
   }
-  return g;
+  return mergeStatic(g, 200);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2751,7 +2930,7 @@ function buildRamp(J) {
   jFrame.userData.noOutline = true;
   g.add(jFrame);
 
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 0));
 }
 
 /* the landing on the far side of a gap: a plain striped road patch, painted
@@ -2914,7 +3093,7 @@ function buildTerrain() {
       g.add(roofb);
     }
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 240));
 }
 
 function makeCactus(r, x, y, z) {
@@ -3029,7 +3208,7 @@ function buildRiver() {
     bo.userData.buoy = 1;
     g.add(bo);
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 300));
 }
 
 /* a clump of carrizo cane: tall thin olive stalks with feathery tips */
@@ -3117,7 +3296,7 @@ function buildBoundaryMarker() {
     pnl.renderOrder = 1;
     g.add(pnl);
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 0));
 }
 
 /* ---------------------------------------------------------------------------
@@ -3163,7 +3342,7 @@ function buildBridgeSigns() {
   g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(430), -1, ['U.S. CUSTOMS', 'AHEAD'], '#1e5bff', '#ffffff', 5.4, 2.5));
   g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(900), 1, ['ALL VEHICLES', 'MUST STOP'], '#f2ede1', '#d42a2a', 5.2, 2.5));
   g.add(roadSignPost(CFG.BOUNDARY_D + bridgeD(1300), -1, ['DEL RIO, TX', 'NEXT EXIT'], '#0e7a3c', '#ffffff', 5.2, 2.5));
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 0));
 }
 
 /* ---------------- lamp posts ---------------- */
@@ -3193,6 +3372,7 @@ function buildLamps() {
   var d = 40, i = 0;
   var landXoff = CFG.ROAD_HALF + 4.4;
   var flagMat = { MX: null, US: null };
+  var lampGrp = new THREE.Group();
   while (d < CFG.LAND_END - 40) {
     // never stand a lamp post inside a jump ramp or its gap
     var J = jumpAt(d);
@@ -3226,12 +3406,33 @@ function buildLamps() {
       var xarm = box(1.4, 0.16, 0.16, toon(0x9aa6b5), 0.75, 7.9, 0);
       xarm.userData.noOutline = true;
       c.add(xarm);
-      BANNERS.push(c);
     }
-    c.traverse(function (o) { if (o.userData.lampCone) LAMP_CONES.push(o); });
-    worldRoot.add(c);
+    lampGrp.add(c);
     d += 90; i++;
   }
+  /* ~60 posts x 10 meshes was ~600 draw calls of identical street furniture.
+     The poles, arms, heads, glow panels and bases are static, so the whole line
+     merges down to a handful of chunked meshes. mergeStatic KEEPS the light
+     cones (they are invisible by day) and the flags (waved every frame) as
+     their own objects, re-parented to lampGrp with their transforms baked. */
+  mergeStatic(lampGrp, 260);
+  var cones = [], q;
+  for (q = lampGrp.children.length - 1; q >= 0; q--) {
+    if (lampGrp.children[q].userData.lampCone) cones.push(lampGrp.children[q]);
+  }
+  var coneGrp = new THREE.Group();
+  for (q = 0; q < cones.length; q++) {
+    cones[q].visible = true;                 // or mergeStatic would keep it out
+    cones[q].userData.lampCone = 0;
+    coneGrp.add(cones[q]);
+  }
+  mergeStatic(coneGrp, 260);
+  coneGrp.visible = false;
+  LAMP_CONES.push(coneGrp);                  // NOCHE flips the whole line at once
+  worldRoot.add(lampGrp);
+  worldRoot.add(coneGrp);
+  /* every flag is now a direct child of lampGrp, so ONE entry waves them all */
+  BANNERS.push(lampGrp);
 }
 
 /* ---------------------------------------------------------------------------
@@ -3435,6 +3636,7 @@ function buildAcuna() {
   bigFlag.userData.banner = true; bigFlag.userData.wave = 0.4;
   bigFlag.userData.noOutline = true;
   var flagHolder = new THREE.Group();
+  flagHolder.userData.noMerge = 1;           // BANNERS reads its children
   flagHolder.add(bigFlag);
   g.add(flagHolder);
   BANNERS.push(flagHolder);
@@ -3448,7 +3650,7 @@ function buildAcuna() {
     var sd2 = (q % 2 === 0) ? -1 : 1;
     g.add(makePrickly(r, sd2 * (24 + r() * 260), TOP, -(D1 - 24 - r() * (LEN - 50))));
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 200));
 }
 
 /* a mesquite: low, wide, dark-olive canopy on a crooked trunk */
@@ -3526,6 +3728,7 @@ function buildDelRio() {
     flg.userData.banner = true; flg.userData.wave = p * 1.7;
     flg.userData.noOutline = true;
     var hold = new THREE.Group();
+    hold.userData.noMerge = 1;               // BANNERS reads its children
     hold.add(flg);
     g.add(hold);
     BANNERS.push(hold);
@@ -3600,7 +3803,7 @@ function buildDelRio() {
     if (r() > 0.5) g.add(makePrickly(r, x, TOP, z));
     else g.add(makeMesquite(r, x, TOP, z));
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 200));
 }
 
 /* ---------------- PAPEL PICADO ----------------------------------------
@@ -3667,6 +3870,7 @@ function papelMats() {
 function papelSag(t, sag) { return sag * 4 * t * (1 - t); }
 function papelStrand(width, n, yTop, sag, seedOff) {
   var g = new THREE.Group();
+  g.userData.noMerge = 1;                 // BANNERS reads its children every frame
   var mats = papelMats();
   var cordM = toon(0x3a3f4a);
   var SEG = 7;                                // enough to read as a real droop
@@ -3735,11 +3939,11 @@ var PAPEL_POLE_X = 12.6;                     // on the walkway, inboard of the r
 var PAPEL_POLE_Y = 0.55;                     // walkway surface
 function buildPapelPicado() {
   var g = new THREE.Group();
-  var n = IS_MOBILE ? 7 : 9;
+  var n = 9;
   /* the strand SPACING grows with the course as well as the extent, so a
      longer bridge gets the same number of stations spread further out rather
      than half again as much geometry */
-  var step = bridgeD(IS_MOBILE ? 66 : 52);
+  var step = bridgeD(52);
   var i = 0;
   for (var d = 30; d < bridgeD(640); d += step) {
     if (jumpAt(d)) continue;
@@ -3756,7 +3960,7 @@ function buildPapelPicado() {
     BANNERS.push(strand);
     i++;
   }
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 0));       // the poles fold in, the strands do not
 }
 
 /* ---------------- CIUDAD ACUÑA start gate ---------------- */
@@ -3817,7 +4021,7 @@ function buildStartGate() {
   BANNERS.push(p2);
 
   g.position.z = -8;
-  worldRoot.add(g);
+  worldRoot.add(mergeStatic(g, 0));
   BANNERS.push(g);
 }
 
@@ -3954,6 +4158,7 @@ function buildCustoms() {
   var boardMat = new THREE.MeshBasicMaterial({ map: CUSTOMS.boardGo, side: THREE.FrontSide });
   var board = planeMesh(11, 2.8, boardMat);
   board.position.set(0, CH - 2.2, CD * 0.5 + 1.15);
+  board.userData.noMerge = 1;                  // its map flips PROCEED -> STOP
   g.add(board);
   CUSTOMS.board = board;
   var boardFrame = box(11.8, 3.4, 0.4, dark, 0, CH - 2.2, CD * 0.5 + 0.95);
@@ -3972,9 +4177,9 @@ function buildCustoms() {
     var hb = box(1.1, 2.6, 0.8, dark, lx, CH - 2.0, barZ);
     addOutline(hb, 0.06); g.add(hb);
     var lampR = box(0.72, 0.72, 0.22, basic(0x5a1210), lx, CH - 1.25, barZ + 0.5);
-    lampR.userData.noOutline = true; g.add(lampR);
+    lampR.userData.noOutline = true; lampR.userData.noMerge = 1; g.add(lampR);
     var lampG = box(0.72, 0.72, 0.22, basic(0x35ff6a), lx, CH - 2.75, barZ + 0.5);
-    lampG.userData.noOutline = true; g.add(lampG);
+    lampG.userData.noOutline = true; lampG.userData.noMerge = 1; g.add(lampG);
     CUSTOMS.lampsRed.push(lampR);
     CUSTOMS.lampsGreen.push(lampG);
   }
@@ -3994,6 +4199,7 @@ function buildCustoms() {
       pivot.add(band);
     }
     pivot.rotation.z = Math.PI * 0.5;          // starts pointing UP (open)
+    pivot.userData.noMerge = 1;                // it swings: never fold it in
     g.add(pivot);
     CUSTOMS.gates.push(pivot);
     var post = box(0.5, 2.0, 0.5, toon(0xb9c2cd), gx - CFG.LANE_W * 0.5 + 0.35, 1.0, barZ - 1.6);
@@ -4042,6 +4248,11 @@ function buildCustoms() {
   }
 
   g.position.z = -CFG.FINISH_D;
+  /* the booths, canopy, signals and signage are static; the gates, the two
+     switchable lamps per lane, the message board, the officers (built hidden)
+     and the fascia banners are all kept out by mergeStatic and re-parented to
+     g, so CUSTOMS.* and the banner sweep still see exactly what they stored. */
+  mergeStatic(g, 0);
   worldRoot.add(g);
   BANNERS.push(g);
   CUSTOMS.root = g;
@@ -4187,6 +4398,7 @@ function makeFlameJet() {
   outer.rotation.x = Math.PI / 2;
   outer.position.z = 0.5;
   outer.userData.noOutline = true;
+  /* the full three-layer jet on every device now - it is six tiny cones */
   var hull = new THREE.Mesh(new THREE.ConeGeometry(0.265, 1.10, 8), outlineMat(COL.ink));
   hull.rotation.x = Math.PI / 2;
   hull.position.z = 0.5;
@@ -4194,7 +4406,7 @@ function makeFlameJet() {
   hull.userData.noOutline = true;
   g.add(hull);
   g.add(outer);
-  if (!IS_MOBILE) {
+  if (true) {
     var core = new THREE.Mesh(new THREE.ConeGeometry(0.108, 0.66, 7),
       new THREE.MeshBasicMaterial({ color: 0xfff3b4, fog: false }));
     core.rotation.x = Math.PI / 2;
@@ -4239,8 +4451,8 @@ function updateBoostFlames(dt) {
     FLAME.on = false;
     for (q = 0; q < flameRigs.length; q++) {
       flameRigs[q].getWorldPosition(tmpV);
-      fxSmoke(tmpV, IS_MOBILE ? 2 : 4);
-      for (var e = 0; e < (IS_MOBILE ? 3 : 6); e++) {
+      fxSmoke(tmpV, fxN(4, 2));
+      for (var e = 0; e < fxN(6, 3); e++) {
         emit({
           x: tmpV.x + (Math.random() - 0.5) * 0.34, y: tmpV.y + Math.random() * 0.32, z: tmpV.z,
           vx: (Math.random() - 0.5) * 2.6, vy: 0.8 + Math.random() * 2.2, vz: 5 + Math.random() * 7,
@@ -4279,7 +4491,7 @@ function updateBoostFlames(dt) {
     jet.rotation.x = -0.20 - FLAME.len * 0.07 + Math.sin(FLAME.t * 9 + i) * 0.03;
     jet.rotation.y = Math.sin(FLAME.t * 7.3 + i * 2.1) * 0.05;
     // and while the super boost burns it throws embers out of the pipe
-    if (sup && Math.random() < (IS_MOBILE ? 0.35 : 0.85)) {
+    if (sup && Math.random() < fxN(0.85, 0.35)) {
       jet.getWorldPosition(tmpV);
       emit({
         x: tmpV.x + (Math.random() - 0.5) * 0.55, y: tmpV.y + Math.random() * 0.45, z: tmpV.z + 0.6,
@@ -4427,9 +4639,47 @@ function buildCargoHold(parent) {
   spareHub.userData.noOutline = true;
   g.add(spareHub);
 
+  /* folded down on the spot: the hold is 35 little meshes that are only ever
+     seen through the open barn doors, and they are all static */
+  g.userData.partsBuilt = g.children.length;
+  mergeStatic(g, 0);
+  g.userData.noMerge = 1;              // keep the group itself in the van tree
   parent.add(g);
   return g;
 }
+
+/* ---------------------------------------------------------------------------
+   THE DRIVER'S WINDOW
+   He used to lean straight THROUGH the door: the cab window was a solid slab
+   of glass welded onto a solid white wall, and there was no hole for him to
+   come out of. Three things change.
+
+   1. The driver's side of the body shell gets a real APERTURE. The left wall
+      is built as three panels around a rectangle - below the sill, above the
+      header, behind the B-pillar - and the block that fills the cab behind it
+      is carved back on that side, so the opening looks into a dark cab with a
+      man sitting in it instead of at 11 cm of white bodywork.
+   2. The glass is its own object (driverWinGrp) that SLIDES DOWN into the door
+      and is swallowed by the lower panel and the skirt.
+   3. Nothing leans until the glass is out of the way, and how far he may lean
+      is solved against this rectangle every frame - see updateDriver().
+
+   All of it is van-local. WIN_X_IN is the INNER face of the door skin: any
+   part of the rig outboard of that is crossing the wall, and must therefore be
+   inside the aperture in BOTH y and z or it is clipping through the door.
+   --------------------------------------------------------------------------- */
+var WIN_X_IN = 1.20;                     // inner face of the door skin
+var WIN_Y0 = 1.82, WIN_Y1 = 2.90;        // sill / header
+var WIN_Z0 = -1.50, WIN_Z1 = -0.46;      // A-pillar / B-pillar
+var WIN_GLASS_X = -1.235;                // the pane, tucked inside the skin
+/* which end of the side-livery texture is the CAB end. Set from a look at the
+   van, not from guessing at three's plane winding. */
+var SIDE_LIVERY_FLIP = false;
+var WIN_DROP = 1.08;                     // far enough to vanish under the sill
+/* t: 0 = fully up, 1 = fully down. The rate is set per reaction - 0.4 s at
+   the customs booth, a much faster 0.2 s for a mid-run hit. */
+var WINDOW = { t: 0, target: 0, rate: 1 / 0.4 };
+var driverGlass = null, driverWinRef = null;
 
 function buildVan() {
   van = new THREE.Group();            // world transform (position / lane)
@@ -4464,20 +4714,48 @@ function buildVan() {
      the van's stroke exactly as it was instead of inking five panel seams. */
   var BZ0 = -1.50, BZ1 = 3.00, BZC = (BZ0 + BZ1) * 0.5, BZD = BZ1 - BZ0;
   var BXO = 1.31, BY0 = 1.075, BY1 = 3.025;
+  var WT = BXO - HOLD_AP_X;                 // door skin thickness, 0.11
+  var WXC = -(BXO + HOLD_AP_X) * 0.5;       // its centre, -1.255
   var bodyPanels = [
-    [BXO - HOLD_AP_X, 1.95, BZD, -(BXO + HOLD_AP_X) * 0.5, 2.05, BZC],      // left wall
-    [BXO - HOLD_AP_X, 1.95, BZD, (BXO + HOLD_AP_X) * 0.5, 2.05, BZC],       // right wall
+    /* ---- the DRIVER's wall, in three pieces around the window aperture ---- */
+    [WT, WIN_Y0 - BY0, BZD, WXC, (BY0 + WIN_Y0) * 0.5, BZC],                // below the sill
+    [WT, BY1 - WIN_Y1, BZD, WXC, (WIN_Y1 + BY1) * 0.5, BZC],                // above the header
+    [WT, WIN_Y1 - WIN_Y0, BZ1 - WIN_Z1, WXC, (WIN_Y0 + WIN_Y1) * 0.5,
+     (WIN_Z1 + BZ1) * 0.5],                                                 // behind the B-pillar
+    [WT, 1.95, BZD, (BXO + HOLD_AP_X) * 0.5, 2.05, BZC],                    // right wall, solid
     [BXO * 2, BY1 - HOLD_AP_Y1, BZD, 0, (HOLD_AP_Y1 + BY1) * 0.5, BZC],     // roof panel
-    [BXO * 2, HOLD_AP_Y0 - BY0, BZD, 0, (BY0 + HOLD_AP_Y0) * 0.5, BZC],     // floor panel
-    // the front block, closing the cavity off behind the cab
-    [HOLD_AP_X * 2, HOLD_AP_Y1 - HOLD_AP_Y0, HOLD_Z0 - BZ0,
-     0, (HOLD_AP_Y0 + HOLD_AP_Y1) * 0.5, (BZ0 + HOLD_Z0) * 0.5]
+    [BXO * 2, HOLD_AP_Y0 - BY0, BZD, 0, (BY0 + HOLD_AP_Y0) * 0.5, BZC]      // floor panel
   ];
   for (var bp = 0; bp < bodyPanels.length; bp++) {
     var P = bodyPanels[bp];
     var panelM = box(P[0], P[1], P[2], white, P[3], P[4], P[5]);
     panelM.userData.noOutline = true;
     vanBody.add(panelM);
+  }
+  /* ---- the block that closes the cargo cavity off behind the cab.
+     It used to be one solid slab from x -1.20 to +1.20 - which is exactly why
+     the driver was buried in bodywork, since he sits at x -0.72, INSIDE it. It
+     is now three pieces leaving a real cab cavity on his side, and it is dark
+     instead of white, so an open window shows a cab interior. */
+  var cabIn = toon(0x2b3038);
+  var CX1 = -0.10;                          // inboard edge of the cavity
+  var CZ1 = -0.35;                          // how far back the cavity goes
+  var cabPanels = [
+    // everything from the cavity's inboard edge across to the passenger side
+    [HOLD_AP_X - CX1, HOLD_AP_Y1 - HOLD_AP_Y0, HOLD_Z0 - BZ0,
+     (CX1 + HOLD_AP_X) * 0.5, (HOLD_AP_Y0 + HOLD_AP_Y1) * 0.5, (BZ0 + HOLD_Z0) * 0.5],
+    // under the cavity: the door card / dash height, below the sill
+    [CX1 + HOLD_AP_X, WIN_Y0 - HOLD_AP_Y0, HOLD_Z0 - BZ0,
+     (-HOLD_AP_X + CX1) * 0.5, (HOLD_AP_Y0 + WIN_Y0) * 0.5, (BZ0 + HOLD_Z0) * 0.5],
+    // behind the cavity: the bulkhead side, so you cannot see into the hold
+    [CX1 + HOLD_AP_X, HOLD_AP_Y1 - WIN_Y0, HOLD_Z0 - CZ1,
+     (-HOLD_AP_X + CX1) * 0.5, (WIN_Y0 + HOLD_AP_Y1) * 0.5, (CZ1 + HOLD_Z0) * 0.5]
+  ];
+  for (var cp = 0; cp < cabPanels.length; cp++) {
+    var C = cabPanels[cp];
+    var cabM = box(C[0], C[1], C[2], cabIn, C[3], C[4], C[5]);
+    cabM.userData.noOutline = true;
+    vanBody.add(cabM);
   }
   // one inverted hull for the whole body, so the outline is the old silhouette
   var bodyHull = new THREE.Mesh(
@@ -4525,14 +4803,30 @@ function buildVan() {
     pil.rotation.x = -0.30;
     vanBody.add(pil);
   }
-  // cab side windows
-  for (var s2 = -1; s2 <= 1; s2 += 2) {
-    var win = box(0.10, 0.86, 1.10, glass, s2 * 1.30, 2.45, -1.02);
-    vanBody.add(win);
-    var winRef = box(0.06, 0.14, 0.80, toon(0x9fc6ff), s2 * 1.345, 2.62, -1.02);
-    winRef.userData.noOutline = true;
-    vanBody.add(winRef);
-  }
+  var WYC = (WIN_Y0 + WIN_Y1) * 0.5, WZC = (WIN_Z0 + WIN_Z1) * 0.5;
+  var WH = WIN_Y1 - WIN_Y0, WD = WIN_Z1 - WIN_Z0;
+  // passenger side window: fixed glass on a solid wall, exactly as before
+  var win = box(0.10, WH, WD, glass, 1.30, WYC, WZC);
+  vanBody.add(win);
+  var winRef = box(0.06, 0.14, 0.78, toon(0x9fc6ff), 1.345, WYC + 0.20, WZC);
+  winRef.userData.noOutline = true;
+  vanBody.add(winRef);
+  /* ---- the DRIVER's window: a pane on its own group that SLIDES DOWN.
+     It sits inboard of the door skin AND inboard of the skirt below it, so
+     when it drops the whole pane is swallowed by the door instead of being
+     smeared down the outside of the van. */
+  driverWinGrp = new THREE.Group();
+  driverWinGrp.userData.noMerge = 1;
+  driverGlass = box(0.066, WH, WD, glass, WIN_GLASS_X, WYC, WZC);
+  driverWinGrp.add(driverGlass);
+  driverWinRef = box(0.010, 0.14, 0.78, toon(0x9fc6ff), WIN_GLASS_X - 0.0365, WYC + 0.20, WZC);
+  driverWinRef.userData.noOutline = true;
+  driverWinGrp.add(driverWinRef);
+  vanBody.add(driverWinGrp);
+  /* the sill trim, just under the opening: what the glass drops behind and
+     what he rests his elbow on */
+  var sill = box(0.16, 0.06, WD + 0.12, trimL, -1.262, WIN_Y0 - 0.03, WZC);
+  vanBody.add(sill);
 
   /* ---- lower skirt / chassis ---- */
   var skirt = box(2.55, 0.80, 6.10, white, 0, 0.92, -0.05);
@@ -4566,8 +4860,9 @@ function buildVan() {
     vanBody.add(arm);
     var mir = box(0.14, 0.52, 0.34, trimD, s3 * 1.78, 2.24, -1.72);
     vanBody.add(mir);
-    // door handle: white, proud of the livery panel so it still reads
-    var dh = box(0.05, 0.09, 0.34, trimL, s3 * 1.355, 1.86, -0.55);
+    // door handle: white, proud of the livery panel so it still reads.
+    // Dropped from 1.86 to 1.70 to clear the window sill trim above it.
+    var dh = box(0.05, 0.09, 0.34, trimL, s3 * 1.355, 1.70, -0.55);
     vanBody.add(dh);
     // wheel arches
     var arch1 = box(0.16, 0.60, 1.70, trimL, s3 * 1.30, 1.10, -2.10);
@@ -4696,11 +4991,26 @@ function buildVan() {
     flameRigs.push(jet);
   }
 
-  /* ---- livery decals (drawn textures, no outline so they stay crisp) ---- */
+  /* ---- livery decals (drawn textures, no outline so they stay crisp) ----
+     The panel is an OPAQUE plane sitting just outboard of the bodywork, and it
+     ran the full length of the side - straight across the cab door. That was
+     fine while the window was a slab of glass standing proud of it, but a pane
+     that slides down INSIDE the door would disappear behind the livery. So the
+     driver's panel now stops at the B-pillar, cropped with a UV offset so the
+     artwork keeps its scale: the RESCO wordmark and the emblem both live well
+     aft of the pillar and are untouched. */
   var sideMat = basic(0xffffff, { map: SIDE_TEX_R });
+  var LIV_Z0 = -1.46, LIV_Z1 = 2.96, LIV_LEN = LIV_Z1 - LIV_Z0;
+  var cutLen = LIV_Z1 - WIN_Z1;                    // what survives, in units
+  var cutTex = SIDE_TEX_R.clone();
+  cutTex.needsUpdate = true;
+  cutTex.wrapS = cutTex.wrapT = THREE.ClampToEdgeWrapping;
+  cutTex.repeat.set(cutLen / LIV_LEN, 1);
+  cutTex.offset.set(SIDE_LIVERY_FLIP ? 0 : (1 - cutLen / LIV_LEN), 0);
+  var cutMat = basic(0xffffff, { map: cutTex });
   for (var s4 = -1; s4 <= 1; s4 += 2) {
-    var panel = planeMesh(4.42, 1.90, sideMat);
-    panel.position.set(s4 * 1.318, 2.05, 0.75);
+    var panel = (s4 < 0) ? planeMesh(cutLen, 1.90, cutMat) : planeMesh(LIV_LEN, 1.90, sideMat);
+    panel.position.set(s4 * 1.318, 2.05, (s4 < 0) ? (WIN_Z1 + LIV_Z1) * 0.5 : 0.75);
     panel.rotation.y = s4 * Math.PI / 2;
     panel.userData.noOutline = true;
     vanBody.add(panel);
@@ -4839,6 +5149,7 @@ function buildVan() {
    6b. THE DRIVER  -  seated on the LEFT (-X) side of the cab
    ================================================================ */
 var driverRig = null, driverWaist = null, driverHead = null,
+    driverWinGrp = null,
     driverArm = null, driverForearm = null, driverArmInner = null,
     driverFaceMat = null, FACE_CALM = null, FACE_ANGRY = null,
     bubbleMesh = null, bubbleMat = null, BUBBLE_TEX = {};
@@ -4998,10 +5309,68 @@ function makeBubbleTexture(text, tailRight) {
    the entire driver outside the bodywork - he read as a person floating in
    the next lane. Nothing here reads GAME.x, the lane or the lateral slide.
    --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   THE LEAN-OUT POSE, solved against a 1.00 x 1.04 hole
+   The window is only a metre tall and the man is very nearly as tall as it, so
+   every one of these numbers is doing work:
+     SHIFT  small on purpose - 0.42 slid his HIPS through the door skin, and
+            the bottom of the torso then had nowhere legal to be. At 0.25 the
+            lower torso stays inside the cab and only the chest comes out.
+     RISE   he pushes up off the seat so the chest clears the sill.
+     DUCK   the head drops into the shoulders, and
+     TILT   it tips outboard, which is what takes the crown of his cap back
+            under the header - a head held straight up is what used to punch
+            through the roof line. Ducking and tipping together are also just
+            what a person does going out of a car window.
+   None of it is trusted: drvClips() re-solves the whole pose every frame and
+   pulls it back until nothing is inside the bodywork.
+   --------------------------------------------------------------------------- */
 var DRIVER_LEAN_ANG = 0.61;      // 35 deg of torso tilt out of the window
-var DRIVER_LEAN_SHIFT = 0.42;    // how far the waist itself slides windowward
+var DRIVER_LEAN_SHIFT = 0.25;    // how far the waist itself slides windowward
+var DRIVER_LEAN_RISE = 0.30;     // he pushes UP off the seat to clear the sill
+var DRIVER_HEAD_DUCK = 0.20;     // head drops into the shoulders
+var DRIVER_HEAD_OUT = 0.10;      // and pushes out through the opening
+var DRIVER_HEAD_FWD = 0.16;
+var DRIVER_HEAD_TILT = -0.50;    // crown tipped outboard, under the header
+/* The head ducks and tips FASTER than the body rises. Without this the crown
+   of his cap sweeps up through the roof line on the way out - legal at rest
+   and legal at full lean, but not in between - and the solver would have to
+   stall the lean half way. Reaching its full duck by 55% of the lean keeps
+   the whole path clear, and reads as him dipping his head to get it out. */
+function drvHeadK(k) { return clamp(k * 1.8, 0, 1); }
+/* ---------------------------------------------------------------------------
+   THE ARM TAKES A ROUTE, not a straight line.
+   Interpolated directly from its rest pose to its lean pose, the forearm swings
+   DOWN and outboard across the closed part of the door somewhere around the
+   half-way mark - legal at both ends, through the bodywork in the middle.
+   So it goes in two phases: first it tucks IN and lifts, staying inside the
+   cab while the chest comes out of the opening, and only then does it swing
+   over onto the sill. Which is, as it happens, exactly how you get your arm
+   out of a car window.
+   --------------------------------------------------------------------------- */
+var ARM_X_MID = 0.30, ARM_Z_MID = 0.45;
+var FORE_X_MID = -1.30, FORE_Z_MID = 0.30;
+var _armPose = { aX: 0, aZ: 0, fX: 0, fZ: 0 };
+function drvArmPose(k, s) {
+  var p = clamp(k / 0.5, 0, 1);              // tuck in and lift
+  var q = clamp((k - 0.5) / 0.5, 0, 1);      // then out onto the sill
+  _armPose.aX = lerp(lerp(ARM_X_REST, ARM_X_MID, p), ARM_X_LEAN, q);
+  _armPose.aZ = lerp(lerp(ARM_Z_REST, ARM_Z_MID, p), ARM_Z_LEAN, q) + s * DRV_SHAKE_A * q;
+  _armPose.fX = lerp(lerp(FORE_X_REST, FORE_X_MID, p), FORE_X_LEAN, q);
+  _armPose.fZ = lerp(lerp(FORE_Z_REST, FORE_Z_MID, p), FORE_Z_LEAN, q) + s * DRV_SHAKE_F * q;
+  return _armPose;
+}
 var DRIVER_MAX_OUT = 0.9;        // hard cap: units beyond the van's side panel
 var VAN_HALF_W = 1.31;
+/* the lean-out arm: elbow down on the sill, forearm folded straight up, fist
+   shaking in clear air beside the door. The REST pose (arm along the door,
+   forearm tucked over the wheel) is the first number of each pair. */
+var ARM_X_REST = 0.75, ARM_Z_REST = 0.00;
+var ARM_X_LEAN = 0.00, ARM_Z_LEAN = -0.55;
+var FORE_X_REST = -1.15, FORE_Z_REST = 0.00;
+var FORE_X_LEAN = 0.00, FORE_Z_LEAN = 3.45;
+var ARM_LEN = 0.40, FORE_LEN = 0.41;
+var DRV_SHAKE_A = 0.10, DRV_SHAKE_F = 0.34;   // how far the fist waves
 
 function buildDriver() {
   FACE_CALM = makeFaceTexture(false);
@@ -5112,8 +5481,8 @@ function buildDriver() {
     knu.userData.noOutline = true;
     driverForearm.add(knu);
   }
-  driverArm.rotation.x = 0.75;          // resting on the door
-  driverForearm.rotation.x = -1.15;
+  driverArm.rotation.x = ARM_X_REST;    // resting on the door
+  driverForearm.rotation.x = FORE_X_REST;
 
   driverArmInner = new THREE.Group();
   driverArmInner.position.set(0.24, 0.48, -0.04);
@@ -5287,15 +5656,194 @@ function updateBubble(leanT) {
   bubbleMesh.scale.set(pop, pop, 1);
 }
 
-/* kick off the angry lean-out. dur seconds, optional phrase list */
-function driverRage(dur, phrases) {
+/* Kick off the angry lean-out. `roll` is how long the window takes to come
+   down before he is allowed through it: 0.4 s at the customs booth, where the
+   whole gag has room to breathe, and a snapped 0.2 s for a mid-run hit. */
+function driverRage(dur, phrases, roll) {
   var list = phrases || HIT_PHRASES;
+  WINDOW.target = 1;
+  WINDOW.rate = 1 / Math.max(0.08, roll || 0.2);
   DRV.active = true;
   DRV.t = 0;
   DRV.dur = dur || 1.5;
   DRV.phrase = list[Math.floor(Math.random() * list.length)];
   setBubblePhrase(DRV.phrase, BUBBLE_SIDE || -1);
   if (driverFaceMat) { driverFaceMat.map = FACE_ANGRY; driverFaceMat.needsUpdate = true; }
+}
+
+/* ---------------------------------------------------------------------------
+   THE LEAN SOLVER
+   The pose is not approximated any more: it is BUILT and MEASURED.
+
+   Once, at boot, drvBuildParts() records the oriented box of every mesh in the
+   rig, expressed in the space of the joint that carries it - waist, head, arm,
+   forearm, inner arm. Those boxes never change again.
+
+   Then, for a candidate lean fraction k, drvClips(k) composes the five joint
+   matrices that pose would use, transforms each recorded box into VAN space,
+   and runs a separating-axis test against the three boxes that make up the
+   solid part of the driver's door: below the sill, above the header, behind
+   the B-pillar. If nothing overlaps, k is legal.
+
+   A bisection then finds the largest legal fraction of the requested lean, so
+   the pose is CLAMPED rather than clipped - and because the test is over the
+   same geometry the renderer draws, "no clipping" is a fact rather than a
+   margin. It costs about thirty of these tests on the frames he is actually
+   leaning, and nothing at all on every other frame.   --------------------------------------------------------------------------- */
+/* the test below is exact, so these are a safety margin and nothing more */
+var DRV_PAD_Y = 0.02, DRV_PAD_Z = 0.05, DRV_PAD_X = 0.015;
+/* ---------------------------------------------------------------------------
+   OBB vs AXIS-ALIGNED BOX, the full separating-axis test.
+   Six axes are not enough: with only the two boxes' face normals a rotated
+   limb that misses the door entirely still reports a hit, which is exactly how
+   a solver ends up refusing to let the driver lean at all. The nine cross
+   products of the two axis sets are what make the answer exact.
+   c/ax/h describe the oriented box (centre, unit axes, half-extents);
+   dc/dh the axis-aligned one; pad inflates the axis-aligned one per axis.
+   --------------------------------------------------------------------------- */
+var _satL = new THREE.Vector3(), _satT = new THREE.Vector3();
+var _satW = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+function satOverlap(c, ax, h, dc, dh, pad) {
+  _satT.set(c.x - dc[0], c.y - dc[1], c.z - dc[2]);
+  var i, j, rA, rB, k;
+  // the axis-aligned box's three face normals
+  for (i = 0; i < 3; i++) {
+    rB = Math.abs(ax[0].getComponent(i)) * h[0] + Math.abs(ax[1].getComponent(i)) * h[1] +
+         Math.abs(ax[2].getComponent(i)) * h[2];
+    if (Math.abs(_satT.getComponent(i)) > dh[i] + pad[i] + rB) return false;
+  }
+  // the oriented box's three face normals
+  for (i = 0; i < 3; i++) {
+    rA = Math.abs(ax[i].x) * (dh[0] + pad[0]) + Math.abs(ax[i].y) * (dh[1] + pad[1]) +
+         Math.abs(ax[i].z) * (dh[2] + pad[2]);
+    if (Math.abs(_satT.dot(ax[i])) > h[i] + rA) return false;
+  }
+  // and the nine cross products
+  for (i = 0; i < 3; i++) {
+    for (j = 0; j < 3; j++) {
+      _satL.crossVectors(_satW[i], ax[j]);
+      var len = _satL.length();
+      if (len < 1e-6) continue;                 // parallel: already covered
+      _satL.multiplyScalar(1 / len);
+      rA = Math.abs(_satL.x) * (dh[0] + pad[0]) + Math.abs(_satL.y) * (dh[1] + pad[1]) +
+           Math.abs(_satL.z) * (dh[2] + pad[2]);
+      rB = 0;
+      for (k = 0; k < 3; k++) rB += Math.abs(_satL.dot(ax[k])) * h[k];
+      if (Math.abs(_satT.dot(_satL)) > rA + rB) return false;
+    }
+  }
+  return true;
+}
+
+/* the solid part of the driver's door, van-local: the skin minus the window.
+   [x0, x1, y0, y1, z0, z1] */
+var DRV_DOOR = null;
+function drvDoorBoxes() {
+  if (!DRV_DOOR) {
+    DRV_DOOR = [
+      [-1.31, -1.20, 1.075, WIN_Y0, -1.50, 3.00],     // below the sill
+      [-1.31, -1.20, WIN_Y1, 3.025, -1.50, 3.00],     // above the header
+      [-1.31, -1.20, WIN_Y0, WIN_Y1, WIN_Z1, 3.00]    // behind the B-pillar
+    ];
+  }
+  return DRV_DOOR;
+}
+/* which part stopped the lean, as three numbers - the solver runs this thirty
+   times on a leaning frame, so it must never build a string */
+var DRV_PARTS = null, DRV_BLOCK_P = -1, DRV_BLOCK_B = -1, DRV_BLOCK_D = -1;
+/* every mesh of the rig, as an oriented box in the space of its own joint */
+function drvBuildParts() {
+  var joints = [driverWaist, driverHead, driverArm, driverForearm, driverArmInner];
+  DRV_PARTS = [];
+  for (var j = 0; j < joints.length; j++) {
+    var J = joints[j];
+    if (!J) continue;
+    var boxes = [];
+    for (var c = 0; c < J.children.length; c++) {
+      var o = J.children[c];
+      if (!o.isMesh || !o.geometry || o.userData.isOutline) continue;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      var bb = o.geometry.boundingBox;
+      boxes.push({
+        cx: (bb.min.x + bb.max.x) * 0.5 + o.position.x,
+        cy: (bb.min.y + bb.max.y) * 0.5 + o.position.y,
+        cz: (bb.min.z + bb.max.z) * 0.5 + o.position.z,
+        hx: (bb.max.x - bb.min.x) * 0.5,
+        hy: (bb.max.y - bb.min.y) * 0.5,
+        hz: (bb.max.z - bb.min.z) * 0.5
+      });
+    }
+    DRV_PARTS.push({ idx: j, boxes: boxes });
+  }
+}
+/* scratch, allocated once: the solver runs ~30 times on a leaning frame */
+var _dvM = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4(),
+            new THREE.Matrix4(), new THREE.Matrix4()];
+var _dvT = new THREE.Matrix4(), _dvR = new THREE.Matrix4();
+var _dvE = new THREE.Euler(), _dvQ = new THREE.Quaternion();
+var _dvP = new THREE.Vector3(), _dvS = new THREE.Vector3(1, 1, 1);
+var _dvC = new THREE.Vector3();
+var _dvA = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+var _dvH = [0, 0, 0], _dvDC = [0, 0, 0], _dvDH = [0, 0, 0];
+var _dvPAD = [DRV_PAD_X, DRV_PAD_Y, DRV_PAD_Z];
+function drvJoint(out, parent, px, py, pz, rx, ry, rz) {
+  _dvP.set(px, py, pz);
+  _dvE.set(rx, ry, rz, 'XYZ');
+  _dvQ.setFromEuler(_dvE);
+  out.compose(_dvP, _dvQ, _dvS);
+  if (parent) out.premultiply(parent);
+  return out;
+}
+/* does the rig, posed at lean fraction k with the fist waved to `s`, put any
+   of its geometry inside the door? A textbook OBB / AABB separating-axis
+   test - three door face normals, three box axes. */
+function drvHits(k, s) {
+  var wx = -0.72 - DRIVER_LEAN_SHIFT * k;
+  var wy = 1.86 + DRIVER_LEAN_RISE * k;
+  var wz = -1.02 + 0.14 * k;
+  var AP = drvArmPose(k, s);
+  // driverRig itself sits at (-0.72, 0, 0) and never moves; fold it in here
+  drvJoint(_dvM[0], null, wx, wy, wz, k * -0.10, k * 0.30, DRIVER_LEAN_ANG * k);
+  var hk = drvHeadK(k);
+  drvJoint(_dvM[1], _dvM[0], -DRIVER_HEAD_OUT * hk, 0.72 - DRIVER_HEAD_DUCK * hk,
+           -0.04 - DRIVER_HEAD_FWD * hk, 0, k * 0.95, DRIVER_HEAD_TILT * hk);
+  drvJoint(_dvM[2], _dvM[0], -0.24, 0.48, -0.04, AP.aX, 0, AP.aZ);
+  drvJoint(_dvM[3], _dvM[2], 0, -ARM_LEN, 0, AP.fX, 0, AP.fZ);
+  drvJoint(_dvM[4], _dvM[0], 0.24, 0.48, -0.04, -0.55, 0, 0);
+  var DOOR = drvDoorBoxes();
+  var p, b, d;
+  for (p = 0; p < DRV_PARTS.length; p++) {
+    var P2 = DRV_PARTS[p], M = _dvM[P2.idx], el = M.elements;
+    _dvA[0].set(el[0], el[1], el[2]);
+    _dvA[1].set(el[4], el[5], el[6]);
+    _dvA[2].set(el[8], el[9], el[10]);
+    for (b = 0; b < P2.boxes.length; b++) {
+      var B = P2.boxes[b];
+      _dvC.set(B.cx, B.cy, B.cz).applyMatrix4(M);
+      _dvH[0] = B.hx; _dvH[1] = B.hy; _dvH[2] = B.hz;
+      // the hard reach cap first: nothing may hang further out than this
+      var rr = Math.abs(_dvA[0].x) * B.hx + Math.abs(_dvA[1].x) * B.hy + Math.abs(_dvA[2].x) * B.hz;
+      if (_dvC.x - rr < -(VAN_HALF_W + DRIVER_MAX_OUT)) {
+        DRV_BLOCK_P = P2.idx; DRV_BLOCK_B = b; DRV_BLOCK_D = -2;   // -2 = the reach cap
+        return true;
+      }
+      for (d = 0; d < DOOR.length; d++) {
+        var D = DOOR[d];
+        _dvDC[0] = (D[0] + D[1]) * 0.5; _dvDC[1] = (D[2] + D[3]) * 0.5; _dvDC[2] = (D[4] + D[5]) * 0.5;
+        _dvDH[0] = (D[1] - D[0]) * 0.5; _dvDH[1] = (D[3] - D[2]) * 0.5; _dvDH[2] = (D[5] - D[4]) * 0.5;
+        if (satOverlap(_dvC, _dvA, _dvH, _dvDC, _dvDH, _dvPAD)) {
+          DRV_BLOCK_P = P2.idx; DRV_BLOCK_B = b; DRV_BLOCK_D = d;
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+/* the fist waves both ways, so both extremes have to be legal */
+function drvClips(k) {
+  if (!DRV_PARTS) return false;
+  return drvHits(k, 1) || drvHits(k, -1);
 }
 
 function updateDriver(dt) {
@@ -5306,6 +5854,7 @@ function updateDriver(dt) {
     var p = DRV.dur > 0 ? DRV.t / DRV.dur : 1;
     if (p >= 1) {
       DRV.active = false;
+      WINDOW.target = 0;                 // and the glass goes straight back up
       if (driverFaceMat) { driverFaceMat.map = FACE_CALM; driverFaceMat.needsUpdate = true; }
     } else {
       // ease out for 22% of the time, hold, ease back in over the last 26%
@@ -5316,82 +5865,88 @@ function updateDriver(dt) {
   }
   if (!isFinite(leanT)) leanT = 0;
 
-  /* Only the waist pivot moves. The furthest point of the rig is the raised
-     fist, which in waist-local space sits about (x -0.50, y +1.35) once the
-     arm is thrown up. Tilting the waist by `ang` about Z converts that height
-     into sideways reach, so the pose is solved for the largest fraction `k`
-     of the full lean that still keeps every part of the rig inside
-     VAN_HALF_W + DRIVER_MAX_OUT. A short bisection is exact enough and costs
-     nothing; the old closed-form approximation assumed a hanging arm and
-     would have under-estimated the raised one. */
-  var maxX = VAN_HALF_W + DRIVER_MAX_OUT;              // 2.21 from the centreline
-  var RIGX = Math.abs(driverRig.position.x);
-  var FIST_Y = 1.42, FIST_X = 0.55, RIG_PAD = 0.07;    // worst case, arm fully up
-  function rigReach(k) {
-    var a = DRIVER_LEAN_ANG * leanT * k;
-    return RIGX + DRIVER_LEAN_SHIFT * leanT * k +
-           FIST_X * Math.cos(a) + FIST_Y * Math.sin(a) + RIG_PAD;
-  }
-  var kk = 1;
-  if (rigReach(1) > maxX) {
-    var klo = 0, khi = 1;
+  /* ---- the glass, first. Nothing leans through closed glass: the pane slides
+     all the way down before the lean is allowed to start, and it does not come
+     back up until he is fully inside again. */
+  var wt = WINDOW.t + (WINDOW.target - WINDOW.t > 0 ? 1 : -1) * WINDOW.rate * dt;
+  WINDOW.t = clamp((WINDOW.target > WINDOW.t) ? Math.min(wt, WINDOW.target)
+                                              : Math.max(wt, WINDOW.target), 0, 1);
+  if (driverWinGrp) driverWinGrp.position.y = -WIN_DROP * WINDOW.t;
+  // the highlight is a reflection ON the pane: it goes the moment it moves
+  if (driverWinRef) driverWinRef.visible = WINDOW.t < 0.04;
+  leanT = Math.min(leanT, WINDOW.t);
+
+  /* ---- how much of that lean the bodywork will actually allow. Bisect on the
+     lean fraction itself, so the answer is the pose rather than a scale. */
+  var leanK = leanT;
+  if (leanT > 0 && drvClips(leanT)) {
+    var lo = 0, hi = leanT;
     for (var bi = 0; bi < 14; bi++) {
-      var km = (klo + khi) * 0.5;
-      if (rigReach(km) > maxX) khi = km; else klo = km;
+      var mid = (lo + hi) * 0.5;
+      if (drvClips(mid)) hi = mid; else lo = mid;
     }
-    kk = klo;
+    leanK = lo;
   }
-  var shift = -DRIVER_LEAN_SHIFT * leanT * kk;
-  var ang = DRIVER_LEAN_ANG * leanT * kk;
+  DRV.leanK = leanK;
 
-  driverWaist.position.x = damp(driverWaist.position.x, shift, 16, dt);
-  driverWaist.position.y = damp(driverWaist.position.y, 1.86 + leanT * 0.06, 16, dt);
-  driverWaist.position.z = damp(driverWaist.position.z, -1.02 + leanT * 0.14, 16, dt);
-  driverWaist.rotation.z = damp(driverWaist.rotation.z, ang, 14, dt);      // tilt out of the window
-  driverWaist.rotation.y = damp(driverWaist.rotation.y, leanT * 0.30, 14, dt);
-  driverWaist.rotation.x = damp(driverWaist.rotation.x, leanT * -0.10, 14, dt);
+  /* SET, never damped. The lean curve is already smooth, and a damped
+     transform lags the pose drvClips() just proved legal - which is exactly
+     how an elbow ends up a centimetre inside the door for a few frames on the
+     way back in. What is solved is what is drawn. */
+  driverWaist.position.x = -DRIVER_LEAN_SHIFT * leanK;
+  driverWaist.position.y = 1.86 + DRIVER_LEAN_RISE * leanK;
+  driverWaist.position.z = -1.02 + 0.14 * leanK;
+  driverWaist.rotation.z = DRIVER_LEAN_ANG * leanK;
+  driverWaist.rotation.y = leanK * 0.30;
+  driverWaist.rotation.x = leanK * -0.10;
 
-  // head turns back toward the player's camera
-  driverHead.rotation.y = damp(driverHead.rotation.y, leanT * 0.95, 12, dt);
-  driverHead.rotation.z = damp(driverHead.rotation.z, leanT * -0.20, 12, dt);
+  /* the head ducks and pushes forward as it comes through the opening - which
+     is what a person does going out of a car window - and turns back toward
+     the chase camera */
+  var hk = drvHeadK(leanK);
+  driverHead.position.x = -DRIVER_HEAD_OUT * hk;
+  driverHead.position.y = 0.72 - DRIVER_HEAD_DUCK * hk;
+  driverHead.position.z = -0.04 - DRIVER_HEAD_FWD * hk;
+  driverHead.rotation.y = leanK * 0.95;
+  driverHead.rotation.z = DRIVER_HEAD_TILT * hk;
 
-  /* Fist pumping. The arm is swung UP and slightly outboard rather than
-     backwards, so from the chase camera the shaking fist clears the window
-     line (the cab glass tops out around y 2.88 in van space) and reads as a
-     silhouette against the sky instead of disappearing behind the door.
-     The outward swing is kept small on purpose - the waist tilt already
-     carries the whole torso out of the window, and stacking a wide arm swing
-     on top of it is what would push driverExtent past its cap. */
-  var target = 0.75, ftarget = -1.15, ztarget = 0;
-  if (shake > 0.05) {
-    var w = Math.sin(WORLD_T * 20) * 0.55;
-    target = -2.86 + w * 0.30;            // upper arm points up + a little back
-    ftarget = -0.24 + w * 0.42;           // forearm straightens the fist skyward
-    ztarget = -0.20 - shake * 0.06;       // just enough to clear his own head
-  }
-  driverArm.rotation.z = damp(driverArm.rotation.z, ztarget, 16, dt);
-  driverArm.rotation.x = damp(driverArm.rotation.x, target, 20, dt);
-  driverForearm.rotation.x = damp(driverForearm.rotation.x, ftarget, 20, dt);
-  driverArmInner.rotation.x = damp(driverArmInner.rotation.x, -0.55, 12, dt);
+  /* ---- the arm. Elbow ON THE SILL, forearm folded straight up, fist shaking
+     in clear air beside the door - which is both what was asked for and what
+     keeps the whole limb outside the bodywork instead of swinging through it.
+     The shake rides on top of the solved pose, so it can never push the arm
+     past what drvClips() allowed. */
+  /* the shake rides INSIDE the solved envelope: drvClips() was handed the same
+     +/- swing, so a wave can never take the fist somewhere it did not allow */
+  var AP = drvArmPose(leanK, shake > 0.05 ? Math.sin(WORLD_T * 20) : 0);
+  driverArm.rotation.z = AP.aZ;
+  driverArm.rotation.x = AP.aX;
+  driverForearm.rotation.z = AP.fZ;
+  driverForearm.rotation.x = AP.fX;
+  driverArmInner.rotation.x = -0.55;
 
   /* The bubble is anchored to his head and sized from the camera frustum, so
      it must be placed AFTER updateCamera has moved / re-FOV'd the camera this
      frame - running it here used last frame's camera and drew the balloon
      several percent too big with the tail trailing the head. Stash the lean
      and let updateCamera finish the job. */
-  DRV.leanT = leanT;
+  DRV.leanT = leanK;
 }
 function resetDriver() {
-  DRV.active = false; DRV.t = 0; DRV.dur = 0; DRV.leanT = 0;
+  DRV.active = false; DRV.t = 0; DRV.dur = 0; DRV.leanT = 0; DRV.leanK = 0;
+  WINDOW.t = 0; WINDOW.target = 0; WINDOW.rate = 1 / 0.4;
+  if (driverWinGrp) driverWinGrp.position.y = 0;
+  if (driverWinRef) driverWinRef.visible = true;
   if (driverFaceMat) { driverFaceMat.map = FACE_CALM; driverFaceMat.needsUpdate = true; }
   if (driverRig) {
     driverRig.position.set(-0.72, 0, 0);
     driverRig.rotation.set(0, 0, 0);
     driverWaist.position.set(0, 1.86, -1.02);
     driverWaist.rotation.set(0, 0, 0);
+    driverHead.position.set(0, 0.72, -0.04);
+    driverHead.scale.set(1, 1, 1);
     driverHead.rotation.set(0, 0, 0);
-    driverArm.rotation.set(0.75, 0, 0);
-    driverForearm.rotation.set(-1.15, 0, 0);
+    driverArm.rotation.set(ARM_X_REST, 0, ARM_Z_REST);
+    driverForearm.rotation.set(FORE_X_REST, 0, FORE_Z_REST);
     driverArmInner.rotation.set(-0.55, 0, 0);
   }
   if (bubbleMesh) bubbleMesh.visible = false;
@@ -6284,23 +6839,94 @@ function initObstacles() {
    the corridor audit agree about what may drift out of its spawn row. */
 var MOVERS = { sedan: 1, pickup: 1, semi: 1, flatbed: 1 };
 
+/* ---------------------------------------------------------------------------
+   Fold one vehicle down. Every wheel group is merged on its OWN first (it
+   spins as a unit) and then marked so the body pass leaves it alone; the rest
+   of the shell collapses by material. Anything that animates, is toggled or is
+   looked up by identity later must already carry userData.noMerge, or be
+   hidden - mergeStatic keeps both, with their transforms baked.
+   --------------------------------------------------------------------------- */
+function mergeVehicle(root, wheelList) {
+  if (!root) return root;
+  var W = wheelList || (root.userData ? root.userData.wheels : null);
+  if (W) {
+    for (var i = 0; i < W.length; i++) {
+      mergeStatic(W[i], 0);
+      W[i].userData.noMerge = 1;
+    }
+  }
+  return mergeStatic(root, 0);
+}
+
+/* The RESCO van and its driver, folded down the same way. Run once at boot,
+   after buildVan() + buildDriver() have finished adding to vanBody, so the ink
+   outlines (and their swap to the shared VAN_OUTLINE material) are already in
+   place and merge with the shapes they wrap. Every animated sub-rig is marked
+   first: the two barn doors, the sliding window, the four wheels, the driver's
+   waist / head / arms, the flame jets, and everything that is built hidden
+   (the gold shell, the cosmetics, the wipers, the headlight cones). */
+function mergeVanTree() {
+  var i;
+  if (driverRig) {
+    mergeStatic(driverHead, 0); driverHead.userData.noMerge = 1;
+    mergeStatic(driverForearm, 0); driverForearm.userData.noMerge = 1;
+    mergeStatic(driverArm, 0); driverArm.userData.noMerge = 1;
+    mergeStatic(driverArmInner, 0); driverArmInner.userData.noMerge = 1;
+    mergeStatic(driverWaist, 0); driverWaist.userData.noMerge = 1;
+    mergeStatic(driverRig, 0); driverRig.userData.noMerge = 1;
+  }
+  if (rearDoorL) { mergeStatic(rearDoorL, 0); rearDoorL.userData.noMerge = 1; }
+  if (rearDoorR) { mergeStatic(rearDoorR, 0); rearDoorR.userData.noMerge = 1; }
+  for (i = 0; i < flameRigs.length; i++) flameRigs[i].userData.noMerge = 1;
+  if (driverWinGrp) driverWinGrp.userData.noMerge = 1;
+  mergeVehicle(vanBody, wheels);
+  /* the lean solver measures the MERGED meshes, so it has to record their
+     boxes after the fold, not before */
+  drvBuildParts();
+}
+
+/* Build one pooled obstacle and fold it down to a handful of draw calls. An
+   18-wheeler is ~150 little meshes as authored (18 wheels alone are 60), and
+   three of them on screen at once was ~450 draw calls of traffic. Each wheel
+   group is merged on its own FIRST - it spins as a unit - and then marked so
+   the body merge leaves it alone; everything else in the rig collapses by
+   material. Nothing about the silhouette, the outlines or the collision boxes
+   changes: this is purely how the same triangles are submitted. */
+function buildPooled(type) {
+  var o = OBST_DEFS[type].build();
+  o.userData.type = type;
+  var W = o.userData.wheels;
+  if (W) {
+    for (var wi = 0; wi < W.length; wi++) {
+      mergeStatic(W[wi], 0);
+      W[wi].userData.noMerge = 1;
+    }
+  }
+  mergeStatic(o, 0);
+  // CONTACT SHADOW: every obstacle sits on the road, so every obstacle
+  // gets a soft blob under it. Oil is already a flat decal - it gets none.
+  if (type !== 'oil') {
+    var od = OBST_DEFS[type];
+    addContactBlob(o, od.halfW, Math.min(od.halfL, 6.5));
+  }
+  scene.add(o);
+  return o;
+}
 function acquire(type) {
   var p = pools[type];
-  var o;
-  if (p.length) { o = p.pop(); }
-  else {
-    o = OBST_DEFS[type].build();
-    o.userData.type = type;
-    // CONTACT SHADOW: every obstacle sits on the road, so every obstacle
-    // gets a soft blob under it. Oil is already a flat decal - it gets none.
-    if (type !== 'oil') {
-      var od = OBST_DEFS[type];
-      addContactBlob(o, od.halfW, Math.min(od.halfL, 6.5));
-    }
-    scene.add(o);
-  }
+  var o = p.length ? p.pop() : buildPooled(type);
   o.visible = true;
   return o;
+}
+/* Pre-build the pools at boot. Building an 18-wheeler mid-run meant hundreds
+   of geometry allocations and a shader compile in the middle of a frame; now
+   every prototype exists, is merged and is compiled before the run starts. */
+function warmObstaclePools(n) {
+  for (var t in OBST_DEFS) {
+    if (!Object.prototype.hasOwnProperty.call(OBST_DEFS, t)) continue;
+    var want = (t === 'semi' || t === 'flatbed' || t === 'bus') ? Math.min(2, n) : n;
+    while (pools[t].length < want) { var o = buildPooled(t); o.visible = false; pools[t].push(o); }
+  }
 }
 function release(o) {
   o.visible = false;
@@ -6644,25 +7270,40 @@ function rewardManeuver(label, points) {
   GAME.skillPts += points * mult;
   nearPop(label + ' <b>+' + (points * mult) + ' · x' + mult + '</b>');
 }
+/* This runs from updateHUD, i.e. every frame. It used to re-run two
+   querySelector('.lbl') lookups and rewrite four attributes and two labels
+   whether or not anything had changed. The elements are cached once and every
+   write is now gated on the value it would write. */
+var NITRO_UI = { b: null, bl: null, n: null, nl: null, key: '' };
 function updateNitroUI() {
   var ready = GAME.nitro > 0 && superAllowed() && GAME.superT <= 0;
   var active = GAME.superT > 0;
+  var secs = active ? Math.ceil(GAME.superT) : 0;
+  var key = (ready ? 'R' : '-') + (active ? 'A' : '-') + GAME.nitro + '|' + secs;
+  if (key === NITRO_UI.key) return;
+  NITRO_UI.key = key;
+  if (!NITRO_UI.b) {
+    NITRO_UI.b = $('tHonk');
+    NITRO_UI.bl = NITRO_UI.b ? NITRO_UI.b.querySelector('.lbl') : null;
+    NITRO_UI.n = $('nitroInd');
+    NITRO_UI.nl = NITRO_UI.n ? NITRO_UI.n.querySelector('.lbl') : null;
+  }
   var count = GAME.nitro > 1 ? ' ×' + GAME.nitro : '';
-  var b = $('tHonk');
-  var label = active ? 'BOOST ' + Math.ceil(GAME.superT) + 's' : 'BOOST' + count;
+  var label = active ? 'BOOST ' + secs + 's' : 'BOOST' + count;
+  var b = NITRO_UI.b;
   if (b) {
     var cls = ready ? 'tbtn nitro' : 'tbtn';
     b.setAttribute('data-cls', cls);
     b.className = cls;
     b.disabled = !ready;
     b.setAttribute('aria-label', ready ? 'Activar boost' : active ? 'Boost activo' : 'Recoge un power-up para activar boost');
-    b.querySelector('.lbl').textContent = label;
+    if (NITRO_UI.bl) NITRO_UI.bl.textContent = label;
   }
-  var n = $('nitroInd');
+  var n = NITRO_UI.n;
   if (n) {
     n.className = ready ? 'on' : '';
     n.setAttribute('aria-disabled', String(!ready));
-    n.querySelector('.lbl').textContent = active ? label : 'SPACE · BOOST' + count;
+    if (NITRO_UI.nl) NITRO_UI.nl.textContent = active ? label : 'SPACE · BOOST' + count;
     n.title = ready ? 'Pulsa ESPACIO' : active ? 'Boost activo' : 'Recoge un power-up';
   }
 }
@@ -6711,8 +7352,8 @@ function smashObstacle(o, u) {
     u.knockForward = Math.max(u.speed || 0, GAME.speed * 0.94);
     trafficSignal(o, 1, false);
     fxImpact(o.position);
-    fxSmoke(o.position, IS_MOBILE ? 4 : 8);
-    spawnFragments(o, def, IS_MOBILE ? 4 : 6);
+    fxSmoke(o.position, fxN(8, 4));
+    spawnFragments(o, def, fxN(6, 4));
     return false;
   }
   spawnFragments(o, def);
@@ -7007,7 +7648,7 @@ function fxCoinAbsorb() {
   vanGoldPulse();
   var gy = hasGround(GAME.dist) ? roadHeightAt(GAME.dist) : GAME.y;
   fxRing(GAME.x, gy + 0.07, -GAME.dist + 0.4, 0.34, 1.1, 5.6, true);
-  var n = IS_MOBILE ? 6 : 8;
+  var n = fxN(8, 6);
   for (var i = 0; i < n; i++) {
     var a = (i / n) * Math.PI * 2 + Math.random() * 0.35;
     var sp = 2.2 + Math.random() * 1.9;
@@ -7202,7 +7843,7 @@ function takePickup(kind, pos) {
     toastCol('¡ESCUDO!', 'blue');
     SFX.power();
   }
-  for (var i = 0; i < (IS_MOBILE ? 10 : 18); i++) {
+  for (var i = 0; i < fxN(18, 10); i++) {
     var a = Math.random() * Math.PI * 2;
     emit({
       x: pos.x, y: pos.y + 1.6, z: pos.z,
@@ -7299,7 +7940,7 @@ function buildBirds() {
   birdFlock = new THREE.Group();
   birdFlock.visible = false;
   var m = toon(0x2f3540, { flat: true });
-  var n = IS_MOBILE ? 10 : 16;
+  var n = 16;
   for (var i = 0; i < n; i++) {
     var b = new THREE.Group();
     var body = box(0.22, 0.18, 0.74, m, 0, 0, 0);
@@ -7415,9 +8056,7 @@ function stepPullOver(dt) {
   GAME.latVel = used > 0 ? (x - GAME.prevX) / used : 0;
   GAME.shake = damp(GAME.shake, 0, 10, dt);
   policeTruck.position.set(PULLOVER.shoulderX - PULLOVER.side * 3.2, GAME.y, -GAME.dist - 5);
-  var flash = Math.floor(t * 10) % 2 === 0;
-  policeTruck.userData.lampR.material = basic(flash ? 0xff2a1e : 0x5a1210);
-  policeTruck.userData.lampB.material = basic(flash ? 0x14307f : 0x6fb4ff);
+  policeLamps(Math.floor(t * 10) % 2 === 0);
   if (t >= POLICE_STOP_TIME) {
     PULLOVER.active = false;
     GAME.x = GAME.xBase = GAME.prevX = PULLOVER.returnX;
@@ -7429,6 +8068,20 @@ function stepPullOver(dt) {
 }
 
 /* ---- the police escort -------------------------------------------------- */
+/* The light bar used to build a cache KEY STRING and hit the material cache
+   twice a frame, all run long. Four materials, made once, swapped by index. */
+var POL_MATS = null, POL_FLASH = -1;
+function policeLamps(on) {
+  if (!policeTruck) return;
+  var k = on ? 1 : 0;
+  if (k === POL_FLASH) return;
+  POL_FLASH = k;
+  if (!POL_MATS) {
+    POL_MATS = [basic(0x5a1210), basic(0xff2a1e), basic(0x14307f), basic(0x6fb4ff)];
+  }
+  policeTruck.userData.lampR.material = POL_MATS[k];
+  policeTruck.userData.lampB.material = POL_MATS[2 + k];
+}
 var policeTruck = null;
 function buildPolice() {
   var g = makeCarBody({ w: 2.2, h1: 0.78, h2: 0.80, len: 5.2, cabLen: 1.8,
@@ -7446,21 +8099,26 @@ function buildPolice() {
   var barP = box(1.55, 0.13, 0.32, dk, 0, 2.36, -0.55);
   g.add(barP);
   var lampR = box(0.58, 0.26, 0.32, basic(0xff2a1e), -0.40, 2.53, -0.55);
-  lampR.userData.noOutline = true; g.add(lampR);
+  lampR.userData.noOutline = true; lampR.userData.noMerge = 1; g.add(lampR);
   var lampB = box(0.58, 0.26, 0.32, basic(0x2f7fff), 0.40, 2.53, -0.55);
-  lampB.userData.noOutline = true; g.add(lampB);
+  lampB.userData.noOutline = true; lampB.userData.noMerge = 1; g.add(lampB);
   outlineAll(g, 0.055);
   g.userData.lampR = lampR;
   g.userData.lampB = lampB;
+  mergeVehicle(g);
   g.visible = false;
   scene.add(g);
   policeTruck = g;
 }
+/* the patrol car's own box, and how far up the road it reads */
+var POL_HW = 1.10, POL_HL = 2.60, POL_LOOK = 60, POL_GAP = 5.0;
 function startPolice() {
   if (!policeTruck) return;
   MOMENT.police = 0;
   MOMENT.policeHit = false;
   MOMENT.policeSide = (GAME.x > 0) ? -1 : 1;      // the outer lane furthest away
+  MOMENT.policeLane = (MOMENT.policeSide < 0) ? 0 : CFG.LANES - 1;
+  MOMENT.policeX = laneX(MOMENT.policeLane);
   MOMENT.policeOff = -22;                         // catching up from behind
   MOMENT.policeD = GAME.dist + MOMENT.policeOff;
   policeTruck.visible = true;
@@ -7471,7 +8129,6 @@ function updatePolice(dt) {
   if (MOMENT.police < 0) return;
   MOMENT.police += dt;
   var t = MOMENT.police;
-  var px = laneX(MOMENT.policeSide < 0 ? 0 : CFG.LANES - 1);
   /* the OFFSET from the van is what is damped, never the absolute distance:
      damping an absolute position against a van doing 100 units a second
      leaves the escort permanently ~18 units behind, i.e. off the back of the
@@ -7479,17 +8136,54 @@ function updatePolice(dt) {
   var tgtOff = (t < 1.1) ? -12 : (t < 4.6) ? 2.0 : (26 + (t - 4.6) * 48);
   MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, 2.8, dt);
   MOMENT.policeD = GAME.dist + MOMENT.policeOff;
+  /* ---- it reads the road like everything else on it. Blocked in its lane:
+     take a clear neighbour, or hold station behind the obstruction rather
+     than drive through it. */
+  if (MOMENT.policeX === undefined) { MOMENT.policeLane = (MOMENT.policeSide < 0) ? 0 : CFG.LANES - 1; MOMENT.policeX = laneX(MOMENT.policeLane); }
+  /* its REAL speed, not the player's: in the last phase the scripted offset
+     accelerates it away at 48 u/s on top of the van, and reading the player's
+     speed there under-estimates the closing rate by half */
+  var polV = dt > 0 ? (MOMENT.policeD - (MOMENT.policeDPrev === undefined ? MOMENT.policeD : MOMENT.policeDPrev)) / dt : GAME.speed;
+  if (!isFinite(polV) || polV < 0) polV = GAME.speed;
+  MOMENT.policeDPrev = MOMENT.policeD;
+  var polLook = Math.max(POL_LOOK, polV * 1.6);
+  MOMENT.policeHold = Math.max(0, (MOMENT.policeHold || 0) - dt);
+  var blk = laneBlocker(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL, polLook);
+  if (blk && polV - blk.speed > 0.5) {
+    if (MOMENT.policeHold <= 0) {
+      var PL = pickFreeLane(MOMENT.policeLane, MOMENT.policeD, POL_HW, POL_HL, polLook);
+      if (PL >= 0 && PL !== MOMENT.policeLane) {
+        MOMENT.policeLane = PL; MOMENT.policeHold = 0.7; GHOST_AUDIT.policeSwerves++;
+      }
+    }
+  }
+  MOMENT.policeX = damp(MOMENT.policeX, laneX(MOMENT.policeLane), 4.0, dt);
+  /* the frontier, applied unconditionally: however the script wants to move
+     the escort, it stops behind whatever is really in its lane */
+  var polFront = laneBlocker(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL, POL_GAP + 2);
+  if (polFront && polFront.gap < POL_GAP) {
+    GHOST_AUDIT.policeBrakes++;
+    MOMENT.policeD += Math.min(0, polFront.gap - POL_GAP);
+    MOMENT.policeOff = MOMENT.policeD - GAME.dist;
+  }
+  var over = boxOverlap(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL);
+  if (over) {
+    GHOST_AUDIT.policeOverlaps++;
+    var pu = over.userData;
+    MOMENT.policeD = (pu.d >= MOMENT.policeD) ? (pu.d - pu.halfL - POL_HL - 0.35)
+                                              : (pu.d + pu.halfL + POL_HL + 0.35);
+    MOMENT.policeOff = MOMENT.policeD - GAME.dist;
+  }
+  var px = MOMENT.policeX;
   policeTruck.position.set(px, roadHeightAt(MOMENT.policeD), -MOMENT.policeD);
-  policeTruck.rotation.y = 0;
+  policeTruck.rotation.y = damp(policeTruck.rotation.y, 0, 6, dt);
   if (!MOMENT.policeHit && GAME.state === 'PLAYING' && !GAME.airborne &&
       !jumpClearZone(GAME.dist) && Math.abs(px - GAME.x) < 2.38 &&
       Math.abs(MOMENT.policeD - GAME.dist) < 5.8) {
     beginPullOver();
     return;
   }
-  var on = (Math.floor(WORLD_T * 7) % 2) === 0;
-  policeTruck.userData.lampR.material = basic(on ? 0xff2a1e : 0x5a1210);
-  policeTruck.userData.lampB.material = basic(on ? 0x6fb4ff : 0x14307f);
+  policeLamps((Math.floor(WORLD_T * 7) % 2) === 0);
   if (policeTruck.userData.wheels) {
     for (var w = 0; w < policeTruck.userData.wheels.length; w++) {
       policeTruck.userData.wheels[w].rotation.x -= (GAME.speed / 0.58) * dt;
@@ -7531,6 +8225,9 @@ function buildHeli() {
   var t2 = box(0.14, 0.20, 2.4, dk, 0, 0, 0); t2.userData.noOutline = true; heliTail.add(t2);
   g.add(heliTail);
   outlineAll(g, 0.07);
+  heliRotor.userData.noMerge = 1; heliTail.userData.noMerge = 1;   // both spin
+  mergeStatic(heliRotor, 0); mergeStatic(heliTail, 0);
+  mergeStatic(g, 0);
   g.visible = false;
   scene.add(g);
   heliRig = g;
@@ -8782,7 +9479,13 @@ function clearActive() {
 /* ================================================================
    10. PARTICLES  (pooled billboard quads)
    ================================================================ */
-var PART_MAX = IS_MOBILE ? 150 : 300;
+/* The pool is the DESKTOP size on every device. PART_BUDGET is how many may
+   be alive at once and is the only thing load-scaling ever touches; its floor
+   is half the desktop count, which is exactly what mobile used to get all the
+   time. */
+var PART_MAX = 300;
+var PART_FLOOR = 150;
+var PART_BUDGET = PART_MAX;
 var partFree = [], partLive = [];
 var partGeo = null;
 var partMatCache = {};
@@ -8808,7 +9511,7 @@ function initParticles() {
 }
 /* o: {x,y,z,vx,vy,vz,life,size,color,grav,spin,billboard,shrink} */
 function emit(o) {
-  if (!partFree.length) return null;
+  if (!partFree.length || partLive.length >= PART_BUDGET) return null;
   var p = partFree.pop();
   p.visible = true;
   p.position.set(o.x, o.y, o.z);
@@ -8891,12 +9594,21 @@ function fxImpact(pos) {
     });
   }
 }
+/* The pop when the van crosses a pad. It used to be twenty long green streaks
+   fired BACKWARDS at 26-48 u/s from just above the road, which is the other
+   half of the green residue: they raced away down the tarmac behind the van
+   and lay there for most of a second. Now it is a short upward flare that
+   stays ON the pad and is gone in a quarter of a second - the pad flashes, and
+   nothing is left on the road. */
 function fxBoost(pos) {
-  for (var i = 0; i < 20; i++) {
+  for (var i = 0; i < 14; i++) {
+    var a = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
     emit({
-      x: pos.x + (Math.random() - 0.5) * 3.2, y: pos.y + 0.2 + Math.random() * 2.2, z: pos.z + (Math.random() - 0.5) * 3,
-      vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 3, vz: 26 + Math.random() * 22,
-      life: 0.42 + Math.random() * 0.3, size: 0.16 + Math.random() * 0.2, aspect: 5.5,
+      x: pos.x + Math.cos(a) * (0.4 + Math.random() * 1.5),
+      y: pos.y + 0.25 + Math.random() * 0.5,
+      z: pos.z + Math.sin(a) * (0.4 + Math.random() * 1.2),
+      vx: Math.cos(a) * 1.2, vy: 5.5 + Math.random() * 4.5, vz: Math.sin(a) * 1.2,
+      life: 0.20 + Math.random() * 0.10, size: 0.16 + Math.random() * 0.14, aspect: 2.2,
       color: i % 3 === 0 ? 0xffffff : (i % 3 === 1 ? COL.boost : COL.boostL)
     });
   }
@@ -10114,6 +10826,14 @@ function musDuckNow(amount) {
   } catch (e) { }
 }
 function musWantMode() {
+  var m = musWantModeRaw();
+  /* while music.mp3 owns the soundtrack the synthesized band steps aside for
+     the run, the boost variation and the title card, and keeps ONLY the
+     customs drone - the one cue the song deliberately hands over to. */
+  if (songOwnsMusic() && (m === 'run' || m === 'intense' || m === 'title')) return 'off';
+  return m;
+}
+function musWantModeRaw() {
   if (!MUS.on) return 'off';
   if (GAME.state === 'TITLE') return 'title';
   if (GAME.state === 'PAUSED') return 'title';
@@ -10245,6 +10965,255 @@ function renderMusicOffline(opts) {
   }, function (e) { throw e; });
 }
 
+/* ================================================================
+   11c. THE SONG  -  music.mp3 as the run soundtrack
+
+   The synthesized banda above is not thrown away: it is the FALLBACK, and it
+   is still what plays the customs drone and every fanfare. What changes is
+   that when the sibling file music.mp3 loads, the RUN is that recording.
+
+   Loading, in order, so the same file works over http and off the disk:
+     1. fetch(new URL('music.mp3', location.href)) -> arrayBuffer
+     2. XMLHttpRequest with responseType 'arraybuffer'   (some file:// browsers)
+     3. an <audio> element through createMediaElementSource
+   and if all three fail, SONG.state stays 'failed', musWantMode() never steps
+   the band aside, and the game sounds exactly as it did before. It can never
+   go silent: the synth is playing the whole time the song is still loading.
+
+   Routing: songGain -> a high-shelf -> MUS.duck. Landing on the DUCK bus is
+   the whole trick - it is downstream of nothing the song needs to escape and
+   upstream of everything it needs to obey, so the recording gets the same
+   ducking under a crash or a grito, the same 600-3000 Hz phone-speaker band
+   during the traffic-jam interlude, and the same trip through masterGain, so
+   M, ?mute=1 and the master limiter all apply to it unchanged.
+
+   Position: a looping AudioBufferSourceNode has no seek, so pausing STOPS the
+   source after storing songPosition() and unpausing starts a new one at that
+   offset - which is what makes "resume where it was" exact. A new run always
+   restarts at 0. playbackRate is deliberately left at 1.0 so that arithmetic
+   stays exact; the boost variation is the +2 dB high shelf alone.
+   ================================================================ */
+var SONG_FILE = 'music.mp3';
+var SONG_GAIN_RUN = 0.85;        // the run: the song IS the soundtrack
+var SONG_GAIN_TITLE = 0.35;      // the title card: quietly, under the menu
+var SONG_FADE = 0.45;            // seconds to fade out at the customs handoff
+var SONG = {
+  state: 'idle',                 // idle | loading | ready | failed
+  mode: '',                      // buffer | element
+  url: '', err: '',
+  buf: null, dur: 0, el: null, elNode: null, src: null,
+  gain: null, shelf: null,
+  playing: false, started: false, startedAt: 0, offset: 0, stopAt: 0,
+  plays: 0, shelfDb: 0
+};
+function songUrl() {
+  try { return new URL(SONG_FILE, window.location.href).href; }
+  catch (e) { return SONG_FILE; }
+}
+function songFail(why) {
+  if (SONG.state === 'ready') return;
+  SONG.state = 'failed';
+  SONG.err = '' + why;
+  // the synthesized band is already playing; just make sure it stays that way
+  try { if (audioReady) musSetMode(musWantMode()); } catch (e) { }
+}
+function songReady(mode, dur) {
+  SONG.mode = mode;
+  SONG.dur = dur > 0 ? dur : 0;
+  SONG.state = 'ready';
+  songConnect();
+  try { musSetMode(musWantMode()); } catch (e) { }   // hand the run over
+  songApply();
+}
+function songPreload() {
+  if (SONG.state !== 'idle') return;
+  SONG.state = 'loading';
+  SONG.url = songUrl();
+  var got = function (ab) {
+    if (!ab || !ab.byteLength) { songXhr(); return; }
+    songDecode(ab);
+  };
+  var no = function (e) { SONG.err = 'fetch: ' + (e && (e.message || e)); songXhr(); };
+  try {
+    if (window.fetch) {
+      window.fetch(SONG.url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(got, no);
+      return;
+    }
+  } catch (e0) { SONG.err = '' + e0; }
+  songXhr();
+}
+/* second try: XHR reaches a few file:// browsers that fetch refuses */
+function songXhr() {
+  if (SONG.state === 'ready') return;
+  try {
+    var x = new XMLHttpRequest();
+    x.open('GET', SONG.url, true);
+    x.responseType = 'arraybuffer';
+    x.onload = function () {
+      if (x.response && x.response.byteLength) songDecode(x.response);
+      else songElement();
+    };
+    x.onerror = function () { songElement(); };
+    x.send();
+  } catch (e) { SONG.err += ' | xhr: ' + e; songElement(); }
+}
+/* decode against the game's OWN AudioContext, so the buffer is already at the
+   right sample rate and never has to be resampled at play time */
+var SONG_BYTES = null;
+function songDecode(ab) {
+  if (ab) SONG_BYTES = ab;
+  if (!SONG_BYTES) return;
+  if (!AC) return;                       // retried from unlockAudio()
+  if (SONG.state === 'ready' || SONG.decoding) return;
+  SONG.decoding = true;
+  var bytes = SONG_BYTES;
+  var once = false;
+  var ok = function (buf) {
+    if (once) return; once = true;
+    SONG.decoding = false; SONG_BYTES = null;
+    SONG.buf = buf;
+    songReady('buffer', buf.duration);
+  };
+  var bad = function (e) {
+    if (once) return; once = true;
+    SONG.decoding = false;
+    SONG.err += ' | decode: ' + (e && (e.message || e));
+    songElement();
+  };
+  try {
+    var p = AC.decodeAudioData(bytes, ok, bad);
+    if (p && p.then) p.then(ok, bad);
+  } catch (e) { bad(e); }
+}
+/* last try: a media element through the same bus */
+function songElement() {
+  if (SONG.state === 'ready' || SONG.el) return;
+  try {
+    var el = new Audio();
+    el.loop = true;
+    el.preload = 'auto';
+    el.src = SONG.url;
+    el.addEventListener('error', function () { songFail(SONG.err + ' | element load'); }, false);
+    el.addEventListener('loadedmetadata', function () {
+      if (SONG.state === 'ready') return;
+      songReady('element', el.duration || 0);
+    }, false);
+    SONG.el = el;
+    el.load();
+  } catch (e) { songFail(SONG.err + ' | element: ' + e); }
+}
+function songConnect() {
+  if (!AC || SONG.gain) return;
+  SONG.gain = AC.createGain();
+  SONG.gain.gain.value = 0.0001;
+  SONG.shelf = AC.createBiquadFilter();
+  SONG.shelf.type = 'highshelf';
+  SONG.shelf.frequency.value = 3200;
+  SONG.shelf.gain.value = 0;
+  SONG.shelf.connect(SONG.gain);
+  SONG.gain.connect(MUS.duck || masterGain);
+}
+function songStopSource() {
+  if (SONG.src) {
+    try { SONG.src.stop(); } catch (e) { }
+    try { SONG.src.disconnect(); } catch (e2) { }
+    SONG.src = null;
+  }
+  if (SONG.el) { try { SONG.el.pause(); } catch (e3) { } }
+  SONG.playing = false;
+}
+function songPosition() {
+  if (!SONG.playing || !AC) return SONG.offset;
+  if (SONG.mode === 'element' && SONG.el) return SONG.el.currentTime || 0;
+  var d = SONG.dur || 1;
+  return (SONG.offset + (AC.currentTime - SONG.startedAt)) % d;
+}
+function songPlayFrom(off) {
+  if (!AC || SONG.state !== 'ready') return;
+  songConnect();
+  songStopSource();
+  var d = SONG.dur || 1;
+  off = ((off % d) + d) % d;
+  if (SONG.mode === 'buffer' && SONG.buf) {
+    var s = AC.createBufferSource();
+    s.buffer = SONG.buf;
+    s.loop = true;
+    s.connect(SONG.shelf);
+    try { s.start(0, off); } catch (e) { try { s.start(0); } catch (e2) { } }
+    SONG.src = s;
+  } else if (SONG.el) {
+    if (!SONG.elNode) {
+      try { SONG.elNode = AC.createMediaElementSource(SONG.el); SONG.elNode.connect(SONG.shelf); }
+      catch (e3) { SONG.elNode = null; SONG.err += ' | mediaSource: ' + e3; }
+    }
+    try { SONG.el.currentTime = off; } catch (e4) { }
+    var pr = null;
+    try { pr = SONG.el.play(); } catch (e5) { }
+    if (pr && pr['catch']) pr['catch'](function () { });
+  } else {
+    return;
+  }
+  SONG.startedAt = AC.currentTime;
+  SONG.offset = off;
+  SONG.playing = true;
+  SONG.plays++;
+}
+function songPause() {
+  if (!SONG.playing) return;
+  SONG.offset = songPosition();
+  songStopSource();
+}
+/* a NEW run always starts the recording from the top */
+function songRestart() {
+  SONG.offset = 0;
+  if (SONG.playing) songPlayFrom(0); else SONG.stopAt = 0;
+}
+/* is the recording, rather than the synthesized band, the soundtrack? */
+function songOwnsMusic() {
+  return SONG.state === 'ready' && SONG.started && MUS.on;
+}
+function songWantGain() {
+  if (!songOwnsMusic()) return 0;
+  if (GAME.state === 'PLAYING') return SONG_GAIN_RUN;
+  if (GAME.state === 'TITLE') return SONG_GAIN_TITLE;
+  // PAUSED stops it and keeps the position; FINISHED hands over to the drone
+  if (GAME.state === 'FINISHED') return GAME.finPhase <= 0 ? SONG_GAIN_RUN : 0;
+  return 0;
+}
+/* driven once a frame from frame(), next to musSetMode() */
+function songApply() {
+  if (!AC || SONG.state !== 'ready') return;
+  songConnect();
+  var want = songWantGain();
+  var t = AC.currentTime;
+  try {
+    SONG.gain.gain.setTargetAtTime(Math.max(0.0001, want), t, want > 0 ? 0.10 : 0.14);
+  } catch (e) { }
+  if (want > 0) {
+    SONG.stopAt = 0;
+    if (!SONG.playing) songPlayFrom(SONG.offset);
+    /* BOOST VARIATION. A gentle +2 dB high shelf while the turbo is lit -
+       enough to lift the brass and the cymbals so the song leans into the
+       speed. playbackRate is left alone on purpose: nudging it would put
+       songPosition() out of step with the buffer for the rest of the run. */
+    var lift = (GAME.state === 'PLAYING' && (GAME.boostTime > 0 || GAME.superT > 0)) ? 2 : 0;
+    if (lift !== SONG.shelfDb) {
+      SONG.shelfDb = lift;
+      try { SONG.shelf.gain.setTargetAtTime(lift, t, 0.15); } catch (e2) { }
+    }
+  } else if (SONG.playing) {
+    if (!SONG.stopAt) SONG.stopAt = t + SONG_FADE;      // let the fade finish
+    else if (t >= SONG.stopAt) { songPause(); SONG.stopAt = 0; }
+    if (SONG.shelfDb !== 0) {
+      SONG.shelfDb = 0;
+      try { SONG.shelf.gain.setTargetAtTime(0, t, 0.15); } catch (e3) { }
+    }
+  }
+}
+
 function updateMusicUI() {
   /* ?mute=1 silences the whole game, so the MUSICA button reads MUTED however
      the music preference itself is set */
@@ -10267,6 +11236,7 @@ function toggleMusic() {
   updateMusicUI();
   if (!MUS.on) musSetMode('off');
   else { MUS.mode = 'off'; MUS.pending = null; musSetMode(musWantMode()); }
+  songApply();          // M mutes and unmutes the recording as well as the band
   unlockAudio();
 }
 function loadMusicPref() {
@@ -10288,6 +11258,12 @@ function unlockAudio() {
   // user-gesture handler, so every down-handler calls straight into this.
   if (!AC) initAudio();
   if (AC && AC.state === 'suspended') { try { AC.resume(); } catch (e) { } }
+  /* the SONG can only ever start here too: iOS will not let a media element
+     or a resumed context make a sound outside a real gesture handler. If the
+     bytes arrived before the context existed, this is where they decode. */
+  SONG.started = true;
+  if (SONG.state === 'loading' && SONG_BYTES) songDecode(null);
+  songApply();
   // the music can only ever start here: first real gesture, iOS-safe
   if (AC && MUS.bus) {
     try { MUS.nextT = Math.max(MUS.nextT, AC.currentTime); } catch (e2) { }
@@ -10690,9 +11666,66 @@ function injectAppIcon() {
   } catch (e) { }
 }
 
+/* ---------------------------------------------------------------------------
+   ADAPTIVE RESOLUTION
+   DPR 2 is most of what makes a cel-shaded look crisp on a phone, so 2 is now
+   the default EVERYWHERE - the old flat 1.5 cap on mobile was giving away the
+   art before anything had been measured. It is only handed back when the
+   device actually says so: PERF keeps a two-second rolling average of the real
+   rAF frame interval, drops to 1.5 when that average passes DPR_DOWN_MS
+   (~59 fps) and climbs back the moment it recovers past DPR_UP_MS, with a
+   three-second cooldown so it can never flap. Every effect stays on at either
+   resolution; the only other things allowed to scale are the live particle
+   budget (never under half the desktop count) and the rain / cloud counts.
+   --------------------------------------------------------------------------- */
+var DPR_CAP = 2, DPR_LOW = 1.5;
+var DPR_DOWN_MS = 17.2, DPR_UP_MS = 15.4, DPR_HOLD = 3.0;
+var PERF = { cap: DPR_CAP, ms: 16.7, acc: 0, n: 0, win: 0, lastSwitch: -99,
+             drops: 0, ups: 0, hot: false, samples: 0 };
 function pixelRatio() {
   var dpr = window.devicePixelRatio || 1;
-  return Math.min(dpr, IS_MOBILE ? 1.5 : 2);
+  return Math.min(dpr, PERF.cap);
+}
+function applyPixelRatio() {
+  if (!renderer) return;
+  var w = window.innerWidth || 1, h = window.innerHeight || 1;
+  renderer.setPixelRatio(pixelRatio());
+  renderer.setSize(w, h, false);
+  renderer.domElement.style.width = w + 'px';
+  renderer.domElement.style.height = h + 'px';
+}
+/* the two budgets that MAY thin out under load, and nothing else */
+function perfAdaptFx() {
+  PART_BUDGET = PERF.hot ? PART_FLOOR : PART_MAX;
+  if (RAIN && RAIN.geometry) {
+    var rn = PERF.hot ? Math.round(RAIN_N * 0.6) : RAIN_N;
+    RAIN.geometry.setDrawRange(0, rn);
+  }
+  for (var i = 0; i < CLOUDS.length; i++) {
+    CLOUDS[i].visible = !(PERF.hot && CLOUDS[i].userData.thin);
+  }
+}
+/* fed the RAW rAF interval - a stall is not a frame rate, so it is dropped */
+/* how many of a purely decorative burst to emit. Full count unless the frame
+   time has actually gone soft - never a fixed device downgrade. */
+function fxN(full, low) { return PERF.hot ? low : full; }
+function perfSample(dtRaw) {
+  if (!(dtRaw > 0) || dtRaw > 0.1) return;
+  PERF.acc += dtRaw * 1000; PERF.n++; PERF.win += dtRaw; PERF.samples++;
+  if (PERF.win < 2.0) return;
+  PERF.ms = PERF.acc / PERF.n;
+  PERF.acc = 0; PERF.n = 0; PERF.win = 0;
+  if (WORLD_T - PERF.lastSwitch < DPR_HOLD) return;
+  var was = PERF.cap;
+  if (PERF.ms > DPR_DOWN_MS) {
+    PERF.hot = true;
+    if (PERF.cap > DPR_LOW) { PERF.cap = DPR_LOW; PERF.drops++; }
+  } else if (PERF.ms < DPR_UP_MS) {
+    PERF.hot = false;
+    if (PERF.cap < DPR_CAP) { PERF.cap = DPR_CAP; PERF.ups++; }
+  }
+  if (PERF.cap !== was) { PERF.lastSwitch = WORLD_T; applyPixelRatio(); }
+  perfAdaptFx();
 }
 function hudScale(w, h) {
   /* 0.64 rather than 0.56 at the bottom end: below that a 390-wide phone
@@ -10752,6 +11785,105 @@ function onResize() {
 
 
 
+/* ===========================================================================
+   TRAFFIC AWARENESS  -  shared by CHUY and the patrol car
+
+   Both of them used to drive straight through the traffic: the rival picked a
+   random lane every couple of hundred units and the patrol car locked itself
+   to an outer lane, and neither ever looked at what was in front of it. A
+   dark red van passing THROUGH an 18-wheeler is the single most obviously
+   wrong thing on the bridge.
+
+   They now read the same live obstacle list the player collides with. Each
+   frame, look LOOK units up your own lane; if something slower is in the way,
+   take an adjacent lane that is clear (preferring one the reachability solver
+   does not need, so the player's corridor is still never sat on); and if
+   neither neighbour is clear, brake and follow at a safe gap. Whatever
+   happens, nothing is ever left overlapping: resolveOverlap() is the backstop
+   for the case where a vehicle merges or spawns on top of them, and every
+   time it has to act it is counted, so __RR.ghosts can prove it never does.
+
+   Neither of them can touch the PLAYER: the rival is still non-collidable and
+   still ghosts to 60% when it shares the player's lane, and the patrol car's
+   pull-over is exactly as it was.
+   =========================================================================== */
+var GHOST_AUDIT = { rivalOverlaps: 0, policeOverlaps: 0, rivalBrakes: 0,
+                    policeBrakes: 0, rivalSwerves: 0, policeSwerves: 0 };
+var _blk = { gap: 0, speed: 0, o: null };
+/* the nearest thing blocking a box of half-size (halfW, halfL) sitting at
+   (d, x), within `range` of clear road ahead of it. null if the lane is open */
+function laneBlocker(d, x, halfW, halfL, range) {
+  var best = null, i, gap;
+  for (i = 0; i < activeObs.length; i++) {
+    var o = activeObs[i], u = o.userData;
+    if (!o.visible || u.type === 'oil') continue;      // a slick is a decal
+    gap = (u.d - u.halfL) - (d + halfL);
+    if (gap > range) continue;
+    if (gap < -(u.halfL + halfL) * 2 - 6) continue;    // long past it
+    if (Math.abs(o.position.x - x) > u.halfW + halfW + 0.30) continue;
+    if (!best || gap < best.gap) {
+      _blk.gap = gap; _blk.speed = u.speed || 0; _blk.o = o;
+      best = _blk;
+    }
+  }
+  /* AND the hazards that have not been streamed in yet. Obstacles only become
+     real objects SPAWN_AHEAD in front of the player, and CHUY regularly runs
+     out there - so without this it discovers a semi by materialising inside
+     it. The authored plan is read the same way trafficMergeSafe reads it. */
+  for (i = obstacleCursor; i < obstaclePlan.length; i++) {
+    var rec = obstaclePlan[i];
+    if (rec.d - d > range + 60) break;                 // the plan is sorted
+    if (rec.dead || rec.type === 'oil') continue;
+    var def = OBST_DEFS[rec.type];
+    if (!def) continue;
+    gap = (rec.d - def.halfL) - (d + halfL);
+    if (gap > range || gap < -(def.halfL + halfL) * 2 - 6) continue;
+    if (Math.abs(laneX(rec.lane) + (rec.xoff || 0) - x) > def.halfW + halfW + 0.30) continue;
+    if (!best || gap < best.gap) {
+      _blk.gap = gap; _blk.speed = MOVERS[rec.type] ? MOVER_SPEED_LO : 0; _blk.o = null;
+      best = _blk;
+    }
+  }
+  return best;
+}
+/* anything actually INSIDE the box right now */
+function boxOverlap(d, x, halfW, halfL) {
+  for (var i = 0; i < activeObs.length; i++) {
+    var o = activeObs[i], u = o.userData;
+    if (!o.visible || u.type === 'oil') continue;
+    if (Math.abs(u.d - d) >= u.halfL + halfL) continue;
+    if (Math.abs(o.position.x - x) >= u.halfW + halfW) continue;
+    return o;
+  }
+  return null;
+}
+/* pick a clear neighbouring lane, preferring one outside the solved corridor.
+   Returns the lane, or -1 if there is nowhere to go. */
+function pickFreeLane(lane, d, halfW, halfL, look) {
+  var adj = (lane < CFG.LANES * 0.5) ? [lane + 1, lane - 1] : [lane - 1, lane + 1];
+  var cl = corridorLanesAt(d + look);
+  /* the destination only has to be clear for as long as it takes to get into
+     it and settle - demanding the full look-ahead means that in heavy traffic
+     NO lane ever qualifies and it just sits there */
+  var need = look * 0.6 + 20;
+  var pass, i, L, order;
+  for (pass = 0; pass < 4; pass++) {
+    /* 1: an adjacent lane off the racing line. 2: any adjacent lane.
+       3-4: the same two, but any lane at all - the escape hatch for a van
+       boxed against the barrier with a truck either side of it. */
+    order = (pass < 2) ? adj : [0, 1, 2, 3];
+    for (i = 0; i < order.length; i++) {
+      L = order[i];
+      if (L < 0 || L >= CFG.LANES || L === lane) continue;
+      if (Math.abs(L - lane) > 2) continue;             // never a three-lane dive
+      if ((pass === 0 || pass === 2) && cl && cl[L]) continue;
+      if (laneBlocker(d - 6, laneX(L), halfW, halfL, need)) continue;
+      return L;
+    }
+  }
+  return -1;
+}
+
 /* ================================================================
    15b. THE RIVAL  -  "TRANSPORTES CHUY"
 
@@ -10781,7 +11913,7 @@ var RIVAL_PACE = 1.0;
 var RIVAL_TAUNTS = ['\u00a1AH\u00cd TE VES, RESCO!', '\u00a1ADI\u00d3S, COMPA!',
                     '\u00a1LA FACTURA TE ESPERA!', '\u00a1ESTA ES M\u00cdA!'];
 var RIVAL = {
-  active: false, d: 0, lane: 0, x: 0, t: 0, nextLaneAt: 0,
+  active: false, d: 0, lane: 0, x: 0, t: 0, nextLaneAt: 0, v: 0, laneHold: 0,
   beaten: false, finished: false, finishT: 0, lastDz: 0, taunt: 0, tauntN: 0,
   ghost: 1
 };
@@ -10891,6 +12023,7 @@ function buildRival() {
   rivalBubble.userData.noOutline = true;
   g.add(rivalBubble);
 
+  mergeVehicle(g);
   g.visible = false;
   scene.add(g);
   rivalVan = g;
@@ -10933,6 +12066,10 @@ function resetRival() {
   RIVAL.lane = (GAME.lane <= 1) ? 3 : 0;
   RIVAL.x = laneX(RIVAL.lane);
   RIVAL.t = 0; RIVAL.nextLaneAt = RIVAL.d + 240;
+  RIVAL.v = speedCapAt(RIVAL.d) * RIVAL_PACE * 0.35; RIVAL.laneHold = 0;
+  GHOST_AUDIT.rivalOverlaps = 0; GHOST_AUDIT.policeOverlaps = 0;
+  GHOST_AUDIT.rivalBrakes = 0; GHOST_AUDIT.policeBrakes = 0;
+  GHOST_AUDIT.rivalSwerves = 0; GHOST_AUDIT.policeSwerves = 0;
   RIVAL.beaten = false; RIVAL.finished = false; RIVAL.finishT = 0;
   RIVAL.lastDz = 4; RIVAL.taunt = 0; RIVAL.tauntN = 0;
   setRivalOpacity(1);
@@ -10954,16 +12091,58 @@ function rivalRoadY(d) {
   }
   return roadHeightAt(d);
 }
+/* CHUY's own box, and how it drives around traffic */
+var RIVAL_HW = 1.25, RIVAL_HL = 3.05;
+var RIVAL_LOOK = 60;              // how far up its own lane it reads
+var RIVAL_GAP = 6.0;              // the following distance it will not close
 function rivalPickLane() {
-  var cl = corridorLanesAt(RIVAL.d + 60);
+  // the idle weave: still random, but only into a lane that is actually clear
+  var cl = corridorLanesAt(RIVAL.d + RIVAL_LOOK);
   var pool = [], L;
   for (L = 0; L < CFG.LANES; L++) {
     if (cl && cl[L]) continue;                 // never the solved corridor
     if (L === RIVAL.lane) continue;
+    if (laneBlocker(RIVAL.d - 6, laneX(L), RIVAL_HW, RIVAL_HL, RIVAL_LOOK + 30)) continue;
     pool.push(L);
   }
   if (!pool.length) return;
   RIVAL.lane = pool[Math.floor(Math.random() * pool.length) % pool.length];
+}
+/* Look up the lane it is IN - its real x, not its target lane, so a van half
+   way through a slide is judged where it actually is. Returns the speed it is
+   allowed to want; the caller slews towards it.
+
+   Two things stop this thrashing. A lane change is COMMITTED for laneHold
+   seconds, so it cannot re-decide every frame while it is still sliding; and
+   nothing happens at all until the time-to-contact is short, so it runs at
+   full pace right up to the point where a decision is actually due. */
+function rivalAvoid(v, dt) {
+  RIVAL.laneHold = Math.max(0, RIVAL.laneHold - dt);
+  var look = Math.max(RIVAL_LOOK, v * 1.6);
+  var ahead = laneBlocker(RIVAL.d, RIVAL.x, RIVAL_HW, RIVAL_HL, look);
+  if (!ahead) return v;
+  var closing = v - ahead.speed;
+  if (closing <= 0.5) {
+    // it is keeping ahead of us: only hold station if we are already on it
+    return (ahead.gap > RIVAL_GAP) ? v : Math.max(0, ahead.speed);
+  }
+  var ttc = ahead.gap / closing;                 // seconds to contact
+  if (ttc > 2.6 && ahead.gap > RIVAL_GAP * 2) return v;   // plenty of road left
+  if (RIVAL.laneHold <= 0) {
+    var L = pickFreeLane(RIVAL.lane, RIVAL.d, RIVAL_HW, RIVAL_HL, look);
+    if (L >= 0 && L !== RIVAL.lane) {
+      RIVAL.lane = L;
+      RIVAL.laneHold = 0.75;                     // commit to it
+      RIVAL.nextLaneAt = RIVAL.d + 150 + Math.random() * 150;
+      GHOST_AUDIT.rivalSwerves++;
+      return v;
+    }
+  }
+  /* Boxed in: fall in behind. The floor is ZERO, not V_MIN - V_MIN is the
+     PLAYER's floor, and forcing 14 u/s into the back of a parked drum is
+     precisely how a van ends up inside one. */
+  GHOST_AUDIT.rivalBrakes++;
+  return Math.max(0, Math.min(v, ahead.speed + Math.max(0, ahead.gap - RIVAL_GAP) * 1.0));
 }
 function updateRival(dt) {
   if (!RIVAL.active || !rivalVan) return;
@@ -10978,13 +12157,38 @@ function updateRival(dt) {
   var sep = RIVAL.d - GAME.dist;
   if (sep > 160) v *= clamp(1 - (sep - 160) / 900, 0.85, 1);
   else if (sep < -160) v *= clamp(1 + (-sep - 160) / 800, 1, 1.15);
-  RIVAL.d += v * dt;
-
   if (RIVAL.d > RIVAL.nextLaneAt) {
     RIVAL.nextLaneAt = RIVAL.d + 180 + Math.random() * 220;
     rivalPickLane();
   }
-  RIVAL.x = damp(RIVAL.x, laneX(RIVAL.lane), 2.6, dt);
+  /* SLEW, do not snap. rivalAvoid returns the speed the road allows; braking
+     at 55 u/s^2 and picking back up at 26 keeps the pace curve honest and
+     stops a van going from 300 km/h to walking pace inside one frame. */
+  var want = rivalAvoid(v, dt);
+  if (want < RIVAL.v) RIVAL.v = Math.max(want, RIVAL.v - 55 * dt);
+  else RIVAL.v = Math.min(want, RIVAL.v + 26 * dt);
+  if (!isFinite(RIVAL.v)) RIVAL.v = want;
+  v = RIVAL.v;
+  /* and a hard frontier: whatever the pace curve wants, this frame's step can
+     never be longer than the clear road actually in front of it */
+  var front = laneBlocker(RIVAL.d, RIVAL.x, RIVAL_HW, RIVAL_HL, v * dt + 3);
+  if (front && front.gap >= 0) v = Math.min(v, front.gap / Math.max(dt, 1e-4));
+  RIVAL.d += Math.max(0, v) * dt;
+  RIVAL.x = damp(RIVAL.x, laneX(RIVAL.lane), 4.0, dt);
+  /* the backstop. Traffic merges and new spawns do not consult CHUY, so if
+     anything has ended up inside it, slot it in behind rather than let a van
+     sit inside a trailer for a frame. */
+  var over = boxOverlap(RIVAL.d, RIVAL.x, RIVAL_HW, RIVAL_HL);
+  if (over) {
+    GHOST_AUDIT.rivalOverlaps++;
+    var ou = over.userData;
+    /* WHICH WAY out matters. Pushing back out of something that is behind you
+       just feeds it back in - rolling traffic then rear-ends the van every
+       frame - so leave along the shortest axis: drop behind what is in front,
+       and be shoved along by what is behind. */
+    if (ou.d >= RIVAL.d) RIVAL.d = ou.d - ou.halfL - RIVAL_HL - 0.35;
+    else RIVAL.d = ou.d + ou.halfL + RIVAL_HL + 0.35;
+  }
   var y = rivalRoadY(RIVAL.d);
   rivalVan.position.set(RIVAL.x, y, -RIVAL.d);
   rivalVan.rotation.y = damp(rivalVan.rotation.y, 0, 6, dt);
@@ -11733,6 +12937,7 @@ function positionChip() {
     }
   } catch (e) { }
 }
+var CHIP_NAME = '\u0000';
 function updateContractChip() {
   var chip = $('contractChip');
   if (!chip) return;
@@ -11742,8 +12947,12 @@ function updateContractChip() {
   var was = chip.className;
   chip.className = 'on' + (CRUN.voided ? ' void' : '');
   if (CHIP_DIRTY || was !== chip.className) positionChip();
-  var nm = $('ccName');
-  if (nm) nm.textContent = CONTRACT.name + (CRUN.voided ? ' \u2717' : '');
+  var want = CONTRACT.name + (CRUN.voided ? ' \u2717' : '');
+  if (want !== CHIP_NAME) {          // a DOM write a frame for a string that never changes
+    CHIP_NAME = want;
+    var nm = $('ccName');
+    if (nm) nm.textContent = want;
+  }
   var ic = $('ccIco');
   if (ic && ic.getAttribute('data-con') !== CONTRACT.id) {
     ic.setAttribute('data-con', CONTRACT.id);
@@ -11949,7 +13158,7 @@ function onTouchdown() {
     rewardManeuver('¡ATERRIZAJE PERFECTO!', 150);
     SFX.grito();
   }
-  fxSmoke(van.position, IS_MOBILE ? 8 : 14);
+  fxSmoke(van.position, fxN(14, 8));
 }
 
 function launchJump(J) {
@@ -11972,7 +13181,7 @@ function launchJump(J) {
   GAME.landD = J.top + lp.range;
   GAME.shake = Math.min(1.2, GAME.shake + 0.5);
   SFX.boost();
-  fxSmoke(van.position, IS_MOBILE ? 6 : 10);
+  fxSmoke(van.position, fxN(10, 6));
   callout(J.big ? '¡ÉCHALE!' : '¡SÁLTALO!', 1.1);
 }
 
@@ -12082,6 +13291,8 @@ function beginRun(seed) {
   callout('¡VÁMONOS!', 1.5);
   SFX.blip();
   SFX.mariachiStart();
+  songRestart();          // every run starts the song from the top
+  songApply();
 }
 /* the title card no longer drops straight into a run: it offers three seeded
    CARGO CONTRACTS first. __RR.start() bypasses the picker so a headless
@@ -12181,7 +13392,7 @@ function arriveUSA() {
      run that never arrives is a run that earned nothing. */
   bankRun();
   SFX.fanfare();
-  fxConfetti(van.position, IS_MOBILE ? 45 : 90);
+  fxConfetti(van.position, fxN(90, 45));
   callout('¡LLEGASTE!', 2.0);
   if (RIVAL.beaten) {
     window.setTimeout(function () {
@@ -12365,7 +13576,8 @@ function toastCol(text, cls) { pushNote(text, 'mid', cls || 'orange', 0.8, 'toas
 function toast(text) { toastCol(text, ''); }
 function nearPop(text) { pushNote(text, 'sm', '', 0.68, 'near'); }
 
-var hudCache = { s: -1, t: -1, h: -1, b: -1, p: -1, c: -1, m: -1 };
+var hudCache = { s: -1, t: -1, h: -1, b: -1, p: -1, c: -1, m: -1, cm: -1, cl: -1, cfl: -1 };
+var HUD_EL = { comboVal: null, comboLife: null, cmbFill: null, cmbTrack: null };
 var hudCoinShown = 0;              // the count-up ticker's displayed value
 function updateHUD(force) {
   // the readout can never exceed the game's real maximum speed, whatever the
@@ -12412,12 +13624,30 @@ function updateHUD(force) {
     $('progVan').style.left = (prog * 100).toFixed(1) + '%';
   }
   updateNitroUI();
-  $('comboVal').textContent = GAME.combo > 0 ? 'x' + skillMult() : '—';
-  $('comboLife').style.width = (GAME.comboT / 5 * 100).toFixed(0) + '%';
-  var cf = $('cmbFill');
-  if (cf) cf.style.width = (GAME.comboFill * 100).toFixed(0) + '%';
-  var ct = $('cmbTrack');
-  if (ct) ct.className = GAME.comboFill > 0.82 ? 'full' : '';
+  /* the combo readouts were four unconditional DOM writes (two of them with a
+     fresh toFixed string) on every single frame. Cached and gated like the
+     rest of the HUD: nothing is written unless the value it shows changed. */
+  if (!HUD_EL.comboVal) {
+    HUD_EL.comboVal = $('comboVal'); HUD_EL.comboLife = $('comboLife');
+    HUD_EL.cmbFill = $('cmbFill'); HUD_EL.cmbTrack = $('cmbTrack');
+  }
+  var cmb = GAME.combo > 0 ? skillMult() : 0;
+  if (force || cmb !== hudCache.cm) {
+    hudCache.cm = cmb;
+    if (HUD_EL.comboVal) HUD_EL.comboVal.textContent = cmb > 0 ? 'x' + cmb : '—';
+  }
+  var life = Math.round(GAME.comboT / 5 * 100);
+  if (force || life !== hudCache.cl) {
+    hudCache.cl = life;
+    if (HUD_EL.comboLife) HUD_EL.comboLife.style.width = life + '%';
+  }
+  var fill = Math.round(GAME.comboFill * 100);
+  if (force || fill !== hudCache.cfl) {
+    hudCache.cfl = fill;
+    if (HUD_EL.cmbFill) HUD_EL.cmbFill.style.width = fill + '%';
+    var fullCls = GAME.comboFill > 0.82 ? 'full' : '';
+    if (HUD_EL.cmbTrack && HUD_EL.cmbTrack.className !== fullCls) HUD_EL.cmbTrack.className = fullCls;
+  }
   updateContractChip();
 }
 
@@ -12464,7 +13694,7 @@ function hitObstacle(o) {
   var el = $('fx-flash');
   el.style.opacity = '0.85';
   setTimeout(function () { el.style.opacity = '0'; }, 130);
-  driverRage(1.5, HIT_PHRASES);          // he leans out and shakes his fist
+  driverRage(1.5, HIT_PHRASES, 0.2);     // window snaps down, then he leans out
   vanDamageBurst();                      // doors fly open, cargo + paperwork out
 }
 
@@ -12880,7 +14110,7 @@ function stepPlaying(dt) {
       if (GAME.vy < -14 && !GAME.jumpFlags[2]) {
         GAME.vy = -GAME.vy * 0.26;              // one small bounce
         SFX.land();
-        fxSmoke(van.position, IS_MOBILE ? 8 : 14);
+        fxSmoke(van.position, 14);
         GAME.shake = Math.min(1.5, GAME.shake + 0.9);
       } else {
         GAME.vy = 0;
@@ -12943,7 +14173,7 @@ function stepPlaying(dt) {
      over cruise you are, so they read as "this is fast" rather than as fog. */
   var over = clamp((GAME.speed - CFG.V_CRUISE * 1.06) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
   if (over > 0.02) {
-    var nSt = (IS_MOBILE ? 1 : 2);
+    var nSt = fxN(2, 1);
     for (var st = 0; st < nSt; st++) {
       if (Math.random() > over * 0.85) continue;
       var sSide = Math.random() < 0.5 ? -1 : 1;
@@ -12964,15 +14194,13 @@ function stepPlaying(dt) {
     while (GAME.nextWhoosh <= GAME.dist) GAME.nextWhoosh += 90;
     if (GAME.speed > CFG.V_CRUISE * 1.12) SFX.whoosh(GAME.speed);
   }
-  // ----- boost trail
-  if (GAME.boostTime > 0 && Math.random() < (IS_MOBILE ? 0.5 : 0.85)) {
-    exhaustAnchor.getWorldPosition(tmpV);
-    emit({
-      x: tmpV.x + (Math.random() - 0.5) * 2.2, y: tmpV.y + Math.random() * 1.6, z: tmpV.z,
-      vx: (Math.random() - 0.5) * 2, vy: 1 + Math.random() * 2, vz: 12 + Math.random() * 10,
-      life: 0.3, size: 0.2, aspect: 3.5, color: Math.random() > 0.5 ? COL.boost : COL.boostL
-    });
-  }
+  /* ----- NO BOOST TRAIL.
+     A green streak was thrown out of the exhaust every frame the turbo was
+     lit, at road height and travelling BACKWARDS at 12-22 u/s, so it hung on
+     the tarmac behind the van for a third of a second - a green smear the
+     player read as residue on the road rather than as speed. It is gone.
+     What sells a boost is still all here: the muffler flames, the screen-space
+     speed lines, the FOV kick, the green dial and the pad's own glow. */
 }
 
 /* ================================================================
@@ -13042,7 +14270,7 @@ function stepFinished(dt) {
       if (GAME.vy < -14 && !GAME.jumpFlags[2]) { GAME.vy = -GAME.vy * 0.26; SFX.land(); fxSmoke(van.position, 12); }
       else {
         GAME.vy = 0; GAME.airborne = false; GAME.landed = true; GAME.flightJump = null; GAME.pitch = 0;
-        SFX.land(); fxSmoke(van.position, IS_MOBILE ? 8 : 14);
+        SFX.land(); fxSmoke(van.position, 14);
         GAME.shake = Math.min(1.5, GAME.shake + 0.8);
       }
     } else if (GAME.y < -1.2 && !hasGround(GAME.dist)) {
@@ -13079,7 +14307,7 @@ function stepFinished(dt) {
       SFX.drone(2.6);
       callout('ALTO  /  STOP', 1.6);
     }
-    if (Math.random() < (IS_MOBILE ? 0.12 : 0.26)) fxConfetti(van.position, 2);
+    if (Math.random() < 0.26) fxConfetti(van.position, 2);
   } else {
     GAME.speed = 0;
   }
@@ -13091,7 +14319,7 @@ function stepFinished(dt) {
     for (var gi = 0; gi < CUSTOMS.gates.length; gi++) CUSTOMS.gates[gi].rotation.z = ang;
     if (GAME.finT > 1.35) {
       GAME.finPhase = 2; GAME.finT = 0;
-      driverRage(3.2, CUSTOMS_PHRASES);
+      driverRage(3.2, CUSTOMS_PHRASES, 0.4);       // roll it down first
     }
   } else if (GAME.finPhase === 2) {
     /* --- the driver loses it --- */
@@ -13120,7 +14348,7 @@ function stepFinished(dt) {
         off.userData.legs.children[1].rotation.x = -sw;
       }
     }
-    if (!GAME.secondRage && GAME.finT > 1.6) { GAME.secondRage = true; driverRage(3.4, CUSTOMS_PHRASES); }
+    if (!GAME.secondRage && GAME.finT > 1.6) { GAME.secondRage = true; driverRage(3.4, CUSTOMS_PHRASES, 0.4); }
     if (GAME.finT > 5.4 && !GAME.resultsShown) {
       GAME.finPhase = 4; GAME.finT = 0;
       showResults();
@@ -13310,6 +14538,7 @@ var TOD = 'day';
 var LIGHTS = { sun: null, sun2: null, hemi: null, amb: null, hemiWarm: null };
 var STARS = null, STAR_MAT = null, SUN_GLOW = null, CLOUD_FAR_MAT = null;
 var PIER_FOAM = [], LAMP_CONES = [], NEON_SIGNS = [], ROAD_MATS = null;
+var CLOUDS = [];               // both drifting layers, so load can thin them
 var LAMP_GLOW_MAT = null, LAMP_CONE_MAT = null, TAIL_MAT = null, NEON_MATS = {};
 var HEADLIGHT = null, headCones = [], WIPERS = null, COSM = { luces: null, calcas: null };
 var RAIN = null, RAIN_MAT = null, RAIN_N = 0, RAIN_POS = null, RAIN_TEX = null;
@@ -13400,7 +14629,9 @@ function buildHeadlights(parent) {
     parent.add(cone);
     headCones.push(cone);
   }
-  if (!IS_MOBILE) {
+  /* the real spot light on every device: NOCHE is half the point of the
+     contract and a single unshadowed spot is well within a modern phone GPU */
+  if (true) {
     HEADLIGHT = new THREE.SpotLight(0xfff0c8, 0.0, 120, 0.44, 0.62, 1.0);
     HEADLIGHT.position.set(0, 2.1, -3.0);
     parent.add(HEADLIGHT);
@@ -13496,7 +14727,7 @@ function rainTexture() {
   return RAIN_TEX;
 }
 function buildRain() {
-  RAIN_N = IS_MOBILE ? 220 : 480;
+  RAIN_N = 480;
   var geo = new THREE.BufferGeometry();
   RAIN_POS = new Float32Array(RAIN_N * 3);
   for (var i = 0; i < RAIN_N; i++) {
@@ -13581,7 +14812,7 @@ function applyTimeOfDay(keep) {
   }
   if (HEADLIGHT) HEADLIGHT.intensity = night ? 2.4 : 0.0;
   if (WIPERS) WIPERS.visible = rain;
-  if (!RAIN) buildRain();
+  if (!RAIN) buildRain();               // built at boot; this is only a backstop
   if (RAIN) RAIN.visible = rain;
   fxClass('fx-rain', rain);
   fxClass('fx-night', night);
@@ -13605,7 +14836,7 @@ function updateWeather(dt) {
   }
   if (GAME.state !== 'PLAYING' || GAME.airborne) return;
   WEATHER.splash += dt;
-  if (WEATHER.splash > (IS_MOBILE ? 0.10 : 0.055) && GAME.speed > CFG.V_CRUISE * 0.6) {
+  if (WEATHER.splash > 0.055 && GAME.speed > CFG.V_CRUISE * 0.6) {
     WEATHER.splash = 0;
     var s2 = Math.random() < 0.5 ? -1 : 1;
     emit({
@@ -13680,7 +14911,7 @@ function updateWorld(dt) {
 }
 
 /* ---------------- screen-space speed lines ---------------- */
-var speedEl = null;
+var speedEl = null, gameHostEl = null, speedOpacityShown = -1;
 function updateSpeedFX(dt) {
   if (!speedEl) speedEl = $('fx-speed');
   var over = clamp((GAME.speed - CFG.V_CRUISE * 1.04) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
@@ -13688,15 +14919,20 @@ function updateSpeedFX(dt) {
                          (GAME.superT > 0 ? 0.30 : 0));
   if (GAME.state !== 'PLAYING' && GAME.state !== 'FINISHED') o = 0;
   if (GAME.noLines > 0) o = 0;              // an impact kills the speed lines dead
-  speedEl.style.opacity = o.toFixed(2);
-  var sc = 1 + o * 0.40;
-  speedEl.style.transform = 'scale(' + sc.toFixed(3) + ')';
+  /* two toFixed() strings and two style writes a frame, for a number that
+     mostly does not move: quantise it and write only on a real change */
+  var q = Math.round(o * 100);
+  if (q !== speedOpacityShown) {
+    speedOpacityShown = q;
+    speedEl.style.opacity = (q / 100).toFixed(2);
+    speedEl.style.transform = 'scale(' + (1 + (q / 100) * 0.40).toFixed(3) + ')';
+  }
   /* POST LOOK: a faint chromatic split on the canvas, and ONLY while a super
      boost is burning. It is a CSS filter, so it costs the sim nothing. */
-  var gh = $('game');
-  if (gh) {
+  if (!gameHostEl) gameHostEl = $('game');
+  if (gameHostEl) {
     var want = (GAME.superT > 0) ? 'superfx' : '';
-    if (gh.className !== want) gh.className = want;
+    if (gameHostEl.className !== want) gameHostEl.className = want;
   }
 }
 
@@ -13810,7 +15046,7 @@ function frame(dt, tAbs) {
   }
   // the music itself is scheduled off the audio clock; the loop only ever
   // tells it which variation the game is currently in
-  if (audioReady) musSetMode(musWantMode());
+  if (audioReady) { musSetMode(musWantMode()); songApply(); }
 
   if (!DEBUG_NORENDER) renderer.render(scene, camera);
 }
@@ -13823,8 +15059,51 @@ function animate(nowMs) {
   var dt = lastT ? (t - lastT) : 0.016;
   lastT = t;
   if (DEBUG_FREEZE) return;
+  /* the REAL frame interval - the only honest read on whether this device is
+     holding 60 - fed to the adaptive-resolution sampler. Never fed from
+     __RR.step(), which runs as fast as the harness can drive it. */
+  perfSample(dt);
   try { frame(dt, t); }
   catch (err) { reportError(err, 'frame'); }
+}
+
+/* ---------------------------------------------------------------------------
+   LOAD-TIME WARM-UP
+   Two things stall a running frame far worse than any amount of geometry: a
+   shader compile and a texture upload. Every canvas texture that used to be
+   drawn lazily - the traffic merge arrow, the driver's speech balloons, the
+   rival's taunts, the score pop-ups - is generated here instead, and
+   renderer.compile() then walks the whole scene (it does not care about
+   visible, so the hidden pools, the rival, the patrol car and the helicopter
+   are all covered) and links every program before the title card appears.
+   --------------------------------------------------------------------------- */
+function warmTextures() {
+  var i;
+  try {
+    // the amber lane-change arrow a merging vehicle raises
+    if (!MERGE_TEX) {
+      var c = cv(128, 64), g = c.getContext('2d');
+      g.fillStyle = '#ffb52e'; g.strokeStyle = '#171c28'; g.lineWidth = 7;
+      g.beginPath(); g.moveTo(8, 20); g.lineTo(76, 20); g.lineTo(76, 5);
+      g.lineTo(118, 32); g.lineTo(76, 59); g.lineTo(76, 44); g.lineTo(8, 44);
+      g.closePath(); g.stroke(); g.fill();
+      MERGE_TEX = signTex(c);
+    }
+    // every phrase the driver can say, with the tail on either side
+    for (i = 0; i < HIT_PHRASES.length; i++) {
+      makeBubbleTexture(HIT_PHRASES[i], true); makeBubbleTexture(HIT_PHRASES[i], false);
+    }
+    for (i = 0; i < CUSTOMS_PHRASES.length; i++) {
+      makeBubbleTexture(CUSTOMS_PHRASES[i], true); makeBubbleTexture(CUSTOMS_PHRASES[i], false);
+    }
+    for (i = 0; i < RIVAL_TAUNTS.length; i++) makeTauntTexture(RIVAL_TAUNTS[i]);
+    // the four score pop-ups the game can ever draw
+    popNumTexture('+' + SUPER_SMASH_PTS);
+    popNumTexture('+100'); popNumTexture('+200'); popNumTexture('+300');
+    if (!RING_TEX) RING_TEX = makeRingTexture();
+    rainTexture();
+  } catch (eW) { }
+  try { renderer.compile(scene, camera); } catch (eC) { }
 }
 
 /* ---------------- debug driving helpers (used by __RR.*) ---------------- */
@@ -13911,14 +15190,18 @@ function boot() {
   buildBridge();
   buildVan();
   buildDriver();
+  mergeVanTree();          // ~200 little meshes -> ~20 draw calls
   buildRival();
   initObstacles();
+  warmObstaclePools(2);    // no geometry build or shader compile mid-run
   initCoins();
   initParticles();
   // the scripted set-pieces are built once, hidden, and simply switched on
   buildBirds();
   buildPolice();
   buildHeli();
+  buildRain();          // never build a Points cloud + upload its texture mid-run
+  warmTextures();
 
   if (IS_TOUCH) document.body.className = (document.body.className + ' touch').trim();
   layoutVars();
@@ -13944,6 +15227,12 @@ function boot() {
     var wh = $('shopWrench');
     if (wh) { wh.innerHTML = ''; wh.appendChild(iconCanvas(72, drawWrenchIcon)); }
   } catch (eW) { }
+
+  /* Stand the audio graph up NOW, suspended, so music.mp3 can be fetched and
+     decoded against the real context while the title card is on screen and the
+     run starts in sync. Nothing sounds until a gesture resumes it. */
+  try { initAudio(); } catch (eA0) { }
+  songPreload();
 
   bindInput();
   loadMusicPref();
@@ -14009,7 +15298,9 @@ function boot() {
       },
       /* the cargo hold behind the rear doors: a static, always-built interior */
       get interior() {
-        return { built: !!cargoHold, parts: cargoHold ? cargoHold.children.length : 0,
+        return { built: !!cargoHold,
+                 parts: cargoHold ? (cargoHold.userData.partsBuilt || cargoHold.children.length) : 0,
+                 drawParts: cargoHold ? cargoHold.children.length : 0,
                  apertureX: HOLD_AP_X, apertureY0: HOLD_AP_Y0, apertureY1: HOLD_AP_Y1,
                  bodyDepth: BODY_D };
       },
@@ -14195,6 +15486,28 @@ function boot() {
                  visible: !!(rivalVan && rivalVan.visible),
                  taunting: !!(rivalBubble && rivalBubble.visible) };
       },
+      /* THE GHOST AUDIT. `rivalOverlaps` / `policeOverlaps` count the frames on
+         which the backstop had to pull one of them out of a vehicle - i.e. the
+         frames on which the avoidance was not enough on its own. Both must be
+         0 over a full run. `live` re-tests right now, so a harness can assert
+         per-frame as well as per-run. */
+      get ghosts() {
+        var r = rivalVan && RIVAL.active
+          ? boxOverlap(RIVAL.d, RIVAL.x, RIVAL_HW, RIVAL_HL) : null;
+        var p = (policeTruck && policeTruck.visible && MOMENT.police >= 0)
+          ? boxOverlap(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL) : null;
+        return {
+          rivalOverlaps: GHOST_AUDIT.rivalOverlaps,
+          policeOverlaps: GHOST_AUDIT.policeOverlaps,
+          rivalSwerves: GHOST_AUDIT.rivalSwerves,
+          policeSwerves: GHOST_AUDIT.policeSwerves,
+          rivalBrakes: GHOST_AUDIT.rivalBrakes,
+          policeBrakes: GHOST_AUDIT.policeBrakes,
+          liveRival: r ? r.userData.type : null,
+          livePolice: p ? p.userData.type : null,
+          rivalActive: RIVAL.active, policeLive: MOMENT.police >= 0
+        };
+      },
       setRival: function (on) { CFG.RIVAL = !!on; if (!on && rivalVan) { RIVAL.active = false; rivalVan.visible = false; } return CFG.RIVAL; },
       get combo() {
         return { fill: +GAME.comboFill.toFixed(3), minis: GAME.miniBoosts,
@@ -14208,6 +15521,36 @@ function boot() {
       get touch() { return IS_TOUCH; },
       get mobile() { return IS_MOBILE; },
       get dpr() { return pixelRatio(); },
+      /* the numbers the performance pass is judged on: what the renderer is
+         actually submitting, and what the adaptive resolution is doing */
+      get perf() {
+        var inf = renderer ? renderer.info : null;
+        var de = renderer ? renderer.domElement : null;
+        return {
+          calls: inf ? inf.render.calls : 0,
+          triangles: inf ? inf.render.triangles : 0,
+          lines: inf ? inf.render.lines : 0,
+          points: inf ? inf.render.points : 0,
+          programs: inf && inf.programs ? inf.programs.length : 0,
+          geometries: inf ? inf.memory.geometries : 0,
+          textures: inf ? inf.memory.textures : 0,
+          dpr: pixelRatio(), dprCap: PERF.cap,
+          frameMs: +PERF.ms.toFixed(2), hot: PERF.hot,
+          dprDrops: PERF.drops, dprUps: PERF.ups, samples: PERF.samples,
+          canvasPx: de ? [de.width, de.height] : null,
+          particleBudget: PART_BUDGET, particlesLive: partLive.length,
+          merged: { groups: MERGE_STATS.groups, meshesBefore: MERGE_STATS.before,
+                    meshesAfter: MERGE_STATS.after },
+          sceneObjects: (function () { var n = 0; scene.traverse(function () { n++; }); return n; })()
+        };
+      },
+      /* let a test drive the adaptive resolution without waiting on real time */
+      setDprCap: function (v) {
+        PERF.cap = clamp(+v || DPR_CAP, 0.5, 3);
+        PERF.hot = PERF.cap < DPR_CAP;
+        applyPixelRatio(); perfAdaptFx();
+        return pixelRatio();
+      },
       /* --- viewport / safe-area / fullscreen state ---
          `tops` is where each top-row element actually starts, in CSS pixels;
          on a phone in landscape every one of them must be past `top8`. */
@@ -14280,6 +15623,27 @@ function boot() {
                  phone: MUS.phone ? +MUS.phone.gain.value.toFixed(4) : null,
                  master: MASTER_LEVEL };
       },
+      /* music.mp3: did it load, is it the soundtrack right now, and where in
+         the recording are we. `fallback` true means the synthesized banda is
+         still carrying the run, which is the never-silent safety net. */
+      get song() {
+        return {
+          state: SONG.state, mode: SONG.mode, url: SONG.url,
+          duration: +SONG.dur.toFixed(2), playing: SONG.playing,
+          started: SONG.started, plays: SONG.plays,
+          position: +songPosition().toFixed(2),
+          gain: SONG.gain ? +SONG.gain.gain.value.toFixed(4) : null,
+          wantGain: +songWantGain().toFixed(3),
+          shelfDb: SONG.shelfDb,
+          owns: songOwnsMusic(), fallback: !songOwnsMusic(),
+          /* the song hangs off the music DUCK bus, so this is the number that
+             proves a crash or a grito pulls the recording down too */
+          duck: MUS.duck ? +MUS.duck.gain.value.toFixed(4) : null,
+          phone: MUS.phone ? +MUS.phone.gain.value.toFixed(4) : null,
+          musMode: MUS.mode, muted: MUTE_ALL, musicOn: MUS.on,
+          err: SONG.err
+        };
+      },
       /* render the SAME scheduler into an OfflineAudioContext. The samples are
          left on window.__RR_MUSIC for a harness to analyse; the promise
          resolves with peak / rms / dc and the scheduled note count. */
@@ -14330,6 +15694,17 @@ function boot() {
          makes a full-course run take seconds instead of minutes. Never set by
          the game itself. */
       noRender: function (on) { DEBUG_NORENDER = !!on; return DEBUG_NORENDER; },
+      /* which part of the rig stops the lean going further, at a given
+         fraction. '' means that fraction is legal. */
+      leanBlock: function (k) {
+        DRV_BLOCK_P = -1; DRV_BLOCK_B = -1; DRV_BLOCK_D = -1;
+        var bad = drvClips(+k);
+        var names = ['waist', 'head', 'arm', 'forearm', 'innerArm'];
+        return { k: +k, clips: bad,
+                 blocker: bad ? (names[DRV_BLOCK_P] + '/box' + DRV_BLOCK_B +
+                   (DRV_BLOCK_D === -2 ? ' past reach' : ' vs door' + DRV_BLOCK_D)) : '',
+                 parts: DRV_PARTS ? DRV_PARTS.map(function (p) { return names[p.idx] + ':' + p.boxes.length; }) : null };
+      },
       /* how far the driver rig sticks out past the van's side panel, in van
          local units. Used to prove he never leaves the vehicle. */
       driverExtent: function () {
@@ -14347,13 +15722,58 @@ function boot() {
         fb.setFromObject(driverForearm);
         var flo = new THREE.Vector3(fb.min.x, fb.min.y, fb.min.z).applyMatrix4(inv);
         var fhi = new THREE.Vector3(fb.max.x, fb.max.y, fb.max.z).applyMatrix4(inv);
+        /* THE CLIP TEST. The solid part of the driver's door is the skin box
+           minus the window aperture: three boxes - below the sill, above the
+           header, behind the B-pillar. Walk every mesh of the rig, put its
+           geometry's bounding box into van space, and report the deepest
+           penetration into any of them. Anything above ~0 means a limb is
+           inside the door panel, which is the bug this pass exists to fix. */
+        /* THE CLIP TEST. The solid part of the driver's door is the skin box
+           minus the window aperture: three boxes - below the sill, above the
+           header, behind the B-pillar. Every mesh of the rig is turned into an
+           oriented box in van space and run through the SAME full 15-axis
+           separating-axis test the lean solver uses, with NO padding, so this
+           reports the real thing: 1 means real geometry is inside the door
+           panel, which is the bug this pass exists to fix. */
+        var DOOR = drvDoorBoxes();
+        var clip = 0, clipPart = '';
+        var vm = new THREE.Matrix4();
+        var vax = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+        var vh = [0, 0, 0], vdc = [0, 0, 0], vdh = [0, 0, 0], vpad = [0, 0, 0];
+        var vc = new THREE.Vector3();
+        driverRig.traverse(function (o) {
+          if (clip || !o.isMesh || !o.geometry || o.userData.isOutline) return;
+          if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+          var bb = o.geometry.boundingBox;
+          vm.copy(inv).multiply(o.matrixWorld);
+          bb.getCenter(vc).applyMatrix4(vm);
+          var el = vm.elements;
+          vax[0].set(el[0], el[1], el[2]); vh[0] = (bb.max.x - bb.min.x) * 0.5 * vax[0].length(); vax[0].normalize();
+          vax[1].set(el[4], el[5], el[6]); vh[1] = (bb.max.y - bb.min.y) * 0.5 * vax[1].length(); vax[1].normalize();
+          vax[2].set(el[8], el[9], el[10]); vh[2] = (bb.max.z - bb.min.z) * 0.5 * vax[2].length(); vax[2].normalize();
+          for (var d = 0; d < DOOR.length; d++) {
+            var D = DOOR[d];
+            vdc[0] = (D[0] + D[1]) * 0.5; vdc[1] = (D[2] + D[3]) * 0.5; vdc[2] = (D[4] + D[5]) * 0.5;
+            vdh[0] = (D[1] - D[0]) * 0.5; vdh[1] = (D[3] - D[2]) * 0.5; vdh[2] = (D[5] - D[4]) * 0.5;
+            if (satOverlap(vc, vax, vh, vdc, vdh, vpad)) {
+              clip = 1;
+              clipPart = 'door' + d + ' @' + vc.x.toFixed(2) + ',' + vc.y.toFixed(2) + ',' + vc.z.toFixed(2);
+              return;
+            }
+          }
+        });
         return { minX: minX, maxX: maxX, vanHalfW: VAN_HALF_W,
                  outLeft: Math.max(0, -minX - VAN_HALF_W),
                  outRight: Math.max(0, maxX - VAN_HALF_W),
                  minY: Math.min(lo.y, hi.y), maxY: Math.max(lo.y, hi.y),
                  fistTopY: Math.max(flo.y, fhi.y),
                  fistX: Math.min(flo.x, fhi.x),
-                 windowTopY: 2.88, rage: DRV.active };
+                 windowTopY: WIN_Y1, windowY0: WIN_Y0,
+                 windowT: +WINDOW.t.toFixed(3),
+                 glassY: driverWinGrp ? +driverWinGrp.position.y.toFixed(3) : 0,
+                 leanK: +(DRV.leanK || 0).toFixed(3),
+                 clip: +clip.toFixed(4), clipPart: clipPart,
+                 rage: DRV.active };
       },
       clearErrors: function () { ERR_COUNT = 0; ERR_LAST = ''; STATE_LOG.length = 0;
         try { window.localStorage.removeItem('rr_lasterror'); } catch (e) { }
