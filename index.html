@@ -4240,7 +4240,10 @@ function buildCustoms() {
   ];
   for (var o = 0; o < offSpecs.length; o++) {
     var off = makeOfficer(offSpecs[o].shade, offSpecs[o].prop);
-    off.position.set(offSpecs[o].x, 0.42, -1.0);
+    /* on the ISLAND, level with the back of the booths rather than out at
+       the canopy line: from there the walk in is seven units, which at the
+       3.6 s the sequence allows is a walk. From the old z it was a jog. */
+    off.position.set(offSpecs[o].x, 0.42, 3.6);
     off.userData.home = off.position.clone();
     off.visible = false;
     g.add(off);
@@ -5332,6 +5335,14 @@ var DRIVER_HEAD_DUCK = 0.20;     // head drops into the shoulders
 var DRIVER_HEAD_OUT = 0.10;      // and pushes out through the opening
 var DRIVER_HEAD_FWD = 0.16;
 var DRIVER_HEAD_TILT = -0.50;    // crown tipped outboard, under the header
+/* How far he turns his head back over his shoulder at full lean. The old 0.95
+   (54 deg) left him looking forward-past the lens from every angle the game
+   ever puts a camera at: the chase camera is nearly dead astern, and the
+   customs push-in sits 32 deg off the flank, so both wanted more. It is a
+   named constant because drvHits() has to pose the head EXACTLY as
+   updateDriver() draws it, or the solver clamps a lean that is actually
+   legal. */
+var DRIVER_HEAD_YAW = 1.30;
 /* The head ducks and tips FASTER than the body rises. Without this the crown
    of his cap sweeps up through the roof line on the way out - legal at rest
    and legal at full lean, but not in between - and the solver would have to
@@ -5806,7 +5817,7 @@ function drvHits(k, s) {
   drvJoint(_dvM[0], null, wx, wy, wz, k * -0.10, k * 0.30, DRIVER_LEAN_ANG * k);
   var hk = drvHeadK(k);
   drvJoint(_dvM[1], _dvM[0], -DRIVER_HEAD_OUT * hk, 0.72 - DRIVER_HEAD_DUCK * hk,
-           -0.04 - DRIVER_HEAD_FWD * hk, 0, k * 0.95, DRIVER_HEAD_TILT * hk);
+           -0.04 - DRIVER_HEAD_FWD * hk, 0, k * DRIVER_HEAD_YAW, DRIVER_HEAD_TILT * hk);
   drvJoint(_dvM[2], _dvM[0], -0.24, 0.48, -0.04, AP.aX, 0, AP.aZ);
   drvJoint(_dvM[3], _dvM[2], 0, -ARM_LEN, 0, AP.fX, 0, AP.fZ);
   drvJoint(_dvM[4], _dvM[0], 0.24, 0.48, -0.04, -0.55, 0, 0);
@@ -5907,7 +5918,7 @@ function updateDriver(dt) {
   driverHead.position.x = -DRIVER_HEAD_OUT * hk;
   driverHead.position.y = 0.72 - DRIVER_HEAD_DUCK * hk;
   driverHead.position.z = -0.04 - DRIVER_HEAD_FWD * hk;
-  driverHead.rotation.y = leanK * 0.95;
+  driverHead.rotation.y = leanK * DRIVER_HEAD_YAW;
   driverHead.rotation.z = DRIVER_HEAD_TILT * hk;
 
   /* ---- the arm. Elbow ON THE SILL, forearm folded straight up, fist shaking
@@ -11303,6 +11314,11 @@ function onKeyDown(e) {
   keys[lk] = true;
   keys[code] = true;
 
+  /* the checkpoint gag is skippable - every key except the four that already
+     mean something with a results card on the way */
+  if (GAME.state === 'FINISHED' && lk !== 'r' && lk !== 'p' && k !== 'Escape' &&
+      customsSkip()) { e.preventDefault(); return; }
+
   if (lk === 'a' || k === 'ArrowLeft') { requestLane(-1); e.preventDefault(); }
   else if (lk === 'd' || k === 'ArrowRight') { requestLane(1); e.preventDefault(); }
   else if (lk === 'p' || k === 'Escape') { togglePause(); e.preventDefault(); }
@@ -11373,11 +11389,13 @@ function screenUp(x) {
   if (modalOpen()) return;
   // tap fallback: left half / right half of the screen
   if (GAME.state === 'TITLE') { startRun(); return; }
+  if (GAME.state === 'FINISHED') { customsSkip(); return; }
   if (GAME.state !== 'PLAYING') return;
   doLaneInput(x < window.innerWidth * 0.5 ? -1 : 1);
 }
 function doLaneInput(dir) {
   if (GAME.state === 'TITLE') { startRun(); return; }
+  if (GAME.state === 'FINISHED') { customsSkip(); return; }
   if (GAME.state !== 'PLAYING') return;
   requestLane(dir);
 }
@@ -12998,7 +13016,7 @@ var GAME = {
   finishTime: 0, sinceFinish: 0, resultsShown: false,
   honkCd: 0, seed: 1, elapsedSincePuff: 0, crossed: false,
   jumpFlags: [false, false, false],
-  finPhase: 0, finT: 0, camPush: 0, camPushT: 0, rageCam: 0, secondRage: false, quip: '',
+  finPhase: 0, finT: 0, stopT: 0, camPush: 0, camPushT: 0, rageCam: 0, secondRage: false, quip: '',
 };
 var BEST_KEY = 'rescoRunBest_pickups_v3';
 
@@ -13228,7 +13246,7 @@ function resetRun(newSeed) {
   GAME.finishTime = 0; GAME.sinceFinish = 0; GAME.resultsShown = false;
   GAME.crossed = false; GAME.honkCd = 0;
   GAME.elapsedSincePuff = 0;
-  GAME.finPhase = 0; GAME.finT = 0; GAME.camPush = 0; GAME.camPushT = 0; GAME.rageCam = 0; GAME.secondRage = false;
+  GAME.finPhase = 0; GAME.finT = 0; GAME.stopT = 0; GAME.camPush = 0; GAME.camPushT = 0; GAME.rageCam = 0; GAME.secondRage = false;
   GAME.quip = QUIPS[Math.floor(Math.random() * QUIPS.length)];
   STOP_D = CFG.FINISH_D - 13;
   for (var i = 0; i < JUMPS.length; i++) GAME.jumpFlags[i] = false;
@@ -13382,12 +13400,12 @@ function arriveUSA() {
   GAME.sinceFinish = 0;
   GAME.finPhase = 0;
   GAME.finT = 0;
+  GAME.stopT = 0;
   STOP_D = Math.max(CFG.FINISH_D - 13, GAME.dist + 3);
   /* did we beat TRANSPORTES CHUY to the line? */
   RIVAL.beaten = !!(RIVAL.active && !RIVAL.finished);
   RIVAL.active = false;
-  if (rivalVan) rivalVan.visible = false;
-  if (rivalBubble) rivalBubble.visible = false;
+  parkRival();
   /* THE BANK. Coins only become wallet coins here, at the customs line - a
      run that never arrives is a run that earned nothing. */
   bankRun();
@@ -14241,12 +14259,86 @@ function customsSetStop() {
     CUSTOMS.board.material.needsUpdate = true;
   }
 }
+/* Where each officer ends up, in the local space of CUSTOMS.root (its origin
+   sits at -FINISH_D, and +z is BACK down the road towards the player).
+
+   They spread around the van, but never into the shot: the push-in camera
+   parks at roughly (GAME.x - 5.8, van z + 2.6) looking forward-right at the
+   driver's window, so anything standing behind the van on the driver's side
+   is a uniform filling the lens. The clipboard officer therefore walks up
+   ALONGSIDE the driver's door rather than behind it, which is also where a
+   man asking for the factura would actually stand. */
+/* THE SKIP.
+   Seven and a half seconds is a long time to sit through twice, so any key or
+   any tap ends it - but only after two, or the key the player was still
+   holding when they crossed the line would eat the whole ending. Everything
+   the sequence would have done is snapped to its finished state first, so the
+   frame behind the results card is the one the gag was walking towards. */
+function customsSkip() {
+  if (GAME.state !== 'FINISHED' || GAME.resultsShown) return false;
+  /* two seconds measured from the STOP, not from the line: the roll-in is
+     already a couple of seconds long on its own, and a player still holding a
+     key as they crossed would otherwise never see the checkpoint at all */
+  if (GAME.finPhase < 1 || GAME.airborne) return false;
+  if (GAME.sinceFinish - GAME.stopT < 2.0) return false;
+  GAME.speed = 0;
+  GAME.dist = STOP_D;
+  GAME.y = 0;
+  customsSetStop();
+  if (CUSTOMS) {
+    for (var gi = 0; gi < CUSTOMS.gates.length; gi++) CUSTOMS.gates[gi].rotation.z = 0;
+    var vz = CFG.FINISH_D - STOP_D;
+    for (var oi = 0; oi < CUSTOMS.officers.length; oi++) {
+      var off = CUSTOMS.officers[oi], tgt = officerTarget(oi);
+      off.visible = true;
+      off.position.set(tgt.x, 0.03, tgt.z);
+      off.rotation.y = Math.atan2(-(GAME.x - tgt.x), -(vz - tgt.z));
+      if (off.userData.legs) {
+        off.userData.legs.children[0].rotation.x = 0;
+        off.userData.legs.children[1].rotation.x = 0;
+      }
+    }
+  }
+  GAME.finPhase = 4; GAME.finT = 0;
+  GAME.camPushT = 1.8; GAME.camPush = 1;
+  showResults();
+  return true;
+}
+
+/* CHUY parks too - but only if he actually beat us here, or a van the player
+   was told they had left behind would be sitting at the booth. He pulls up
+   short of the STOP line in a lane on the van's PASSENGER side; never the
+   driver's side, which is where the push-in camera spends the whole ending,
+   and never in front of the line. If the player stopped in the outside lane
+   there is no such lane and he stays off screen. */
+function parkRival() {
+  if (!rivalVan) return;
+  rivalVan.visible = false;
+  if (rivalBubble) rivalBubble.visible = false;
+  if (!RIVAL.finished) return;
+  var vx = GAME.laneTo, lane = -1, L;
+  for (L = CFG.LANES - 1; L >= 0; L--) {
+    if (laneX(L) > vx + CFG.LANE_W * 0.5) { lane = L; break; }
+  }
+  if (lane < 0) return;
+  RIVAL.x = laneX(lane);
+  RIVAL.d = STOP_D - 2.4;
+  rivalVan.position.set(RIVAL.x, roadHeightAt(RIVAL.d), -RIVAL.d);
+  rivalVan.rotation.set(0, 0, 0);
+  setRivalOpacity(1);
+  rivalVan.visible = true;
+}
+
 function officerTarget(i) {
-  // local space of CUSTOMS.root (origin sits at -FINISH_D)
   var vz = CFG.FINISH_D - STOP_D;               // van's local z (positive = behind)
-  if (i === 0) return { x: GAME.x - 3.4, z: vz + 0.4 };
-  if (i === 1) return { x: GAME.x + 3.6, z: vz + 1.6 };
-  return { x: GAME.x - 0.4, z: vz - 5.6 };
+  /* they close in along the LINE OF SIGHT, not across it: on this camera
+     "further left of frame" and "further up the road" are the same direction,
+     so a formation fanned out sideways walks straight off the edge of a
+     portrait phone. Fanned in DEPTH instead, they read as three separate men
+     - near, middle and far - on every aspect the game runs at. */
+  if (i === 0) return { x: GAME.x - 2.90, z: vz - 2.6 };  // up to the driver's door
+  if (i === 1) return { x: GAME.x - 0.20, z: vz - 4.6 };  // across the bonnet
+  return { x: GAME.x + 2.20, z: vz - 6.0 };               // round the far headlight
 }
 
 function stepFinished(dt) {
@@ -14300,6 +14392,7 @@ function stepFinished(dt) {
     GAME.dist = Math.min(GAME.dist + GAME.speed * dt, STOP_D);
     if ((GAME.speed <= 0.01 && rem < 1.2) || GAME.finT > 14) {
       GAME.finPhase = 1; GAME.finT = 0;
+      GAME.stopT = GAME.sinceFinish;          // the skip window opens 2 s after this
       GAME.speed = 0;
       customsSetStop();
       SFX.buzzer();
@@ -14313,16 +14406,20 @@ function stepFinished(dt) {
   }
 
   if (GAME.finPhase === 1) {
-    /* --- gate arms swing down --- */
+    /* --- gate arms swing down, while the camera swings to the driver --- */
     var k = clamp(GAME.finT / 1.0, 0, 1);
     var ang = lerp(Math.PI * 0.5, 0, easeInOutCubic(k));
     for (var gi = 0; gi < CUSTOMS.gates.length; gi++) CUSTOMS.gates[gi].rotation.z = ang;
-    if (GAME.finT > 1.35) {
+    if (GAME.finT > 1.2) {
       GAME.finPhase = 2; GAME.finT = 0;
-      driverRage(3.2, CUSTOMS_PHRASES, 0.4);       // roll it down first
+      /* 3.6 s, so he is still hanging out of the window when the uniforms
+         appear - the joke is them walking in on him mid-rant */
+      driverRage(3.6, CUSTOMS_PHRASES, 0.4);       // roll it down first
     }
   } else if (GAME.finPhase === 2) {
-    /* --- the driver loses it --- */
+    /* --- the driver loses it. He gets the frame to himself for this long:
+       0.4 s of glass, then a good two seconds of lean, fist and balloon
+       before anyone else is on screen. --- */
     if (GAME.finT > 2.6) {
       GAME.finPhase = 3; GAME.finT = 0;
       SFX.drone(6.5);
@@ -14330,7 +14427,7 @@ function stepFinished(dt) {
     }
   } else if (GAME.finPhase === 3) {
     /* --- officers walk up, slowly, and surround the van --- */
-    var w = clamp(GAME.finT / 4.2, 0, 1);
+    var w = clamp(GAME.finT / 3.6, 0, 1);
     var e = easeInOutCubic(w);
     for (var i = 0; i < CUSTOMS.officers.length; i++) {
       var off = CUSTOMS.officers[i];
@@ -14348,8 +14445,11 @@ function stepFinished(dt) {
         off.userData.legs.children[1].rotation.x = -sw;
       }
     }
-    if (!GAME.secondRage && GAME.finT > 1.6) { GAME.secondRage = true; driverRage(3.4, CUSTOMS_PHRASES, 0.4); }
-    if (GAME.finT > 5.4 && !GAME.resultsShown) {
+    if (!GAME.secondRage && GAME.finT > 1.4) { GAME.secondRage = true; driverRage(3.2, CUSTOMS_PHRASES, 0.4); }
+    /* the card waits for them to STOP - w hits 1 at 3.6 s, and the extra
+       0.5 s is the beat where three men stand there looking at him.
+       1.2 + 2.6 + 4.1 = 7.9 s of checkpoint, all of it skippable after 2. */
+    if (GAME.finT > 4.1 && !GAME.resultsShown) {
       GAME.finPhase = 4; GAME.finT = 0;
       showResults();
     }
@@ -14421,6 +14521,17 @@ function updateVanVisual(dt) {
 }
 
 /* ---------------- camera ---------------- */
+/* Where the customs push-in ends up. PUSH_AT_* is the centre of the DRIVER's
+   window in van space - the aperture drvDoorBoxes() is cut around, on the
+   van's -X flank, because the van is left-hand drive. PUSH_OFF_* is the
+   camera, out from that window: 4.6 further out to the left, 0.75 above it
+   and 2.9 back, i.e. 5.4 units away on a three-quarter rear-left line - a bit
+   under half the 13 the chase camera sits at, and level with his head. PUSH_RIGHT_* is that shot's own
+   ground-plane RIGHT axis, normalised - used to slide the aim sideways by a
+   fixed fraction of the frustum. */
+var PUSH_AT_X = -1.255, PUSH_AT_Y = 2.45, PUSH_AT_Z = -0.98;
+var PUSH_OFF_X = -4.60, PUSH_OFF_Y = 0.75, PUSH_OFF_Z = 2.90;
+var PUSH_RIGHT_X = 0.5331, PUSH_RIGHT_Z = 0.8460;
 function updateCamera(dt) {
   var spdF = clamp(GAME.speed / CFG.V_BOOST_MAX, 0, 1);
   // portrait phones need a wider, higher chase view to see the lanes at all
@@ -14441,29 +14552,65 @@ function updateCamera(dt) {
   var xFollow = portrait ? 0.88 : 0.62;
   var lookFollow = portrait ? 0.86 : 0.45;
 
-  // the checkpoint push-in: swing round to the driver's side, drop low and
-  // close right in - from ~12.5 units of chase distance to under 6
-  if (GAME.camPush > 0.001) {
-    back = lerp(back, 8.2, GAME.camPush);      // 3/4 rear view over the driver's window
-    up = lerp(up, 3.4, GAME.camPush);
-  }
-
   GAME.rageCam = damp(GAME.rageCam, DRV.active ? 1 : 0, 4.5, dt);
   // the rage nudge and the checkpoint push-in must not stack, or the camera
   // ends up inside the bodywork at the customs stop
   var rage = GAME.rageCam * (1 - GAME.camPush);
-  var gx = GAME.x * xFollow - rage * 2.2 - GAME.camPush * 3.4;
+  var gx = GAME.x * xFollow - rage * 2.2;
   var gy = GAME.y + up + roadHeightAt(GAME.dist) * 0.15 - rage * 0.7;
   var gz = -GAME.dist + back - rage * 2.2;
+  var lkx = GAME.x * lookFollow + rage * 1.2;
+  var lky = GAME.y + 2.1;
+  var lkz = -GAME.dist - 12 - spdF * 6;
 
-  var lam = GAME.camPush > 0.001 ? 1.6 : 1;
+  /* ---- THE CHECKPOINT PUSH-IN -------------------------------------------
+     The van is LEFT-hand drive: the driver sits at van local x -0.72 and his
+     window is the aperture in the van's -X flank (x -1.31..-1.20,
+     y WIN_Y0..WIN_Y1, z WIN_Z0..WIN_Z1). The old push-in only slid 3.4 units
+     sideways while staying 8.2 back, which is 22 degrees off dead astern:
+     the shot was the rear doors, the window faced away from the lens, and the
+     lean, the fist and the balloon all played behind the bodywork.
+
+     It now ends OUTSIDE that flank - a low three-quarter REAR-LEFT view about
+     5.8 units from the glass, half the chase distance - and looks straight at
+     the window. Narrow (portrait) frames have a tiny horizontal field of view
+     at that FOV, so the whole rig is pulled back proportionally there; the
+     framing, not the distance, is what is held constant.                  */
+  if (GAME.camPush > 0.001) {
+    var asp = clamp(camera.aspect || 1.6, 0.4, 3);
+    var pull = asp < 1.35 ? 1 + (1.35 - asp) * 0.62 : 1;
+    // the driver's window, in world space
+    var wx = GAME.x + PUSH_AT_X, wy = GAME.y + PUSH_AT_Y, wz = -GAME.dist + PUSH_AT_Z;
+    /* put the window slightly RIGHT of centre so the balloon, which always
+       takes the other side of his head, has the open half of the frame. The
+       offset is a fixed FRACTION of the frustum, so it reads the same at
+       16:9, at 2:1 and on a 390-wide phone. */
+    var pd = Math.sqrt(PUSH_OFF_X * PUSH_OFF_X + PUSH_OFF_Z * PUSH_OFF_Z) * pull;
+    var halfW = pd * Math.tan(camera.fov * Math.PI / 360) * asp;
+    /* a narrow frame needs a bigger shove: everything else in the shot - the
+       officers especially - lives to the LEFT of the window, and on a phone
+       there is barely any horizontal field to hold it in */
+    var nudge = halfW * (0.17 + Math.max(0, 1.35 - asp) * 0.18);
+    gx = lerp(gx, wx + PUSH_OFF_X * pull, GAME.camPush);
+    gy = lerp(gy, wy + PUSH_OFF_Y * pull + roadHeightAt(GAME.dist) * 0.15, GAME.camPush);
+    gz = lerp(gz, wz + PUSH_OFF_Z * pull, GAME.camPush);
+    /* -cameraRight, i.e. forward-and-left along the ground: shifting the aim
+       that way slides the window to the right of frame */
+    lkx = lerp(lkx, wx - PUSH_RIGHT_X * nudge, GAME.camPush);
+    lky = lerp(lky, wy, GAME.camPush);
+    lkz = lerp(lkz, wz - PUSH_RIGHT_Z * nudge, GAME.camPush);
+  }
+
+  /* the push has to ARRIVE, not trail: at the chase rates the lateral swing
+     lags the 1.5 s ease by a third of a second and the hold starts off-mark */
+  var lam = 1 + GAME.camPush * 2.4;
   camera.position.x = damp(camera.position.x, gx, 4.6 * lam, dt);
   camera.position.y = damp(camera.position.y, gy, 7.0 * lam, dt);
   camera.position.z = damp(camera.position.z, gz, 26.0 * lam, dt);
 
-  camLook.x = damp(camLook.x, lerp(GAME.x * lookFollow, GAME.x, GAME.camPush) + rage * 1.2, 5.5, dt);
-  camLook.y = damp(camLook.y, GAME.y + 2.1 + GAME.camPush * 0.55, 6.0, dt);
-  camLook.z = damp(camLook.z, -GAME.dist - 12 - spdF * 6 + GAME.camPush * 12.0, 9.0, dt);
+  camLook.x = damp(camLook.x, lkx, 5.5 * lam, dt);
+  camLook.y = damp(camLook.y, lky, 6.0 * lam, dt);
+  camLook.z = damp(camLook.z, lkz, 9.0 * lam, dt);
 
   if (GAME.shake > 0.001) {
     var s = GAME.shake * 0.55;
