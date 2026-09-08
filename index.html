@@ -5222,20 +5222,24 @@ function updateBubble(leanT) {
      the viewport at its own depth, and its centre is then clamped so the whole
      thing - tail included - is always fully on screen. */
   var aspect = camera.aspect || 1;
-  var frac = (aspect < 1) ? 0.44 : 0.26;              // fraction of the viewport width
+  var frac = (aspect < 1) ? 0.375 : 0.235;            // fraction of the viewport width
   var dA = camera.position.distanceTo(_bAnchor);
   var dB = Math.max(1.2, dA - 1.2);
   var hFull = 2 * dB * Math.tan(camera.fov * Math.PI / 360);
   var wFull = hFull * aspect;
   var wantW = wFull * frac;
-  var scale = clamp(wantW / BUBBLE_W, 0.25, 4.0);
-  var fracW = (BUBBLE_W * scale) / wFull;             // half-width in NDC
-  var fracH = (BUBBLE_H * scale) / hFull;             // half-height in NDC
+  var scale = clamp(wantW / BUBBLE_W, 0.1, 8.0);
+  /* the pop-in overshoots to ~1.13, so lay the balloon out at the LARGEST
+     size it will ever be drawn at - otherwise the on-screen clamp lets the
+     peak frame poke off the edge or back over a HUD panel. */
+  var lay = scale * 1.13;
+  var fracW = (BUBBLE_W * lay) / wFull;               // half-width in NDC
+  var fracH = (BUBBLE_H * lay) / hFull;               // half-height in NDC
 
   // prefer the side of the head that has room, then clamp fully on screen
   var side = (_bProj.x < 0.0) ? 1 : -1;
-  var cx = _bProj.x + side * (fracW + 0.07);
-  var cy = _bProj.y + fracH + 0.09 + Math.sin(WORLD_T * 6) * 0.012;
+  var cx = _bProj.x + side * (fracW + 0.05);
+  var cy = _bProj.y + fracH + 0.07 + Math.sin(WORLD_T * 6) * 0.012;
   cx = clamp(cx, -0.97 + fracW, 0.97 - fracW);
   cy = clamp(cy, -0.97 + fracH, 0.97 - fracH);
 
@@ -5265,9 +5269,18 @@ function updateBubble(leanT) {
   var finalSide = (cx >= _bProj.x) ? 1 : -1;
   if (finalSide !== BUBBLE_SIDE) { BUBBLE_SIDE = finalSide; setBubblePhrase(DRV.phrase, finalSide); }
 
-  // put that NDC point back into the world, on the ray, at depth dB
-  _bFwd.set(cx, cy, 0.5).unproject(camera).sub(camera.position).normalize();
-  bubbleMesh.position.copy(camera.position).addScaledVector(_bFwd, dB);
+  /* Put that NDC point back into the world at a constant DEPTH of dB.
+     The old code walked dB along the view RAY, which is only the same thing
+     dead ahead: a balloon clamped into a corner ended up physically nearer
+     the camera than dB while still being sized for dB, so it rendered up to
+     ~1.8x too big - worst at the wide boost / portrait FOVs. Dividing by the
+     ray's forward component pins it to the plane at depth dB, so its screen
+     width is exactly `frac` wherever on screen it lands. */
+  camera.getWorldDirection(_bRight);                  // unit forward axis
+  _bFwd.set(cx, cy, 0.5).unproject(camera).sub(camera.position);
+  var dep = _bFwd.dot(_bRight);
+  _bFwd.multiplyScalar(dB / (dep > 1e-4 ? dep : 1e-4));
+  bubbleMesh.position.copy(camera.position).add(_bFwd);
   bubbleMesh.quaternion.copy(camera.quaternion);
   var sc = clamp((leanT - 0.25) / 0.35, 0, 1);
   var pop = easeOutBack(sc) * scale;
@@ -5361,11 +5374,15 @@ function updateDriver(dt) {
   driverForearm.rotation.x = damp(driverForearm.rotation.x, ftarget, 20, dt);
   driverArmInner.rotation.x = damp(driverArmInner.rotation.x, -0.55, 12, dt);
 
-  // the bubble is anchored to his head, tail pointing at him
-  updateBubble(leanT);
+  /* The bubble is anchored to his head and sized from the camera frustum, so
+     it must be placed AFTER updateCamera has moved / re-FOV'd the camera this
+     frame - running it here used last frame's camera and drew the balloon
+     several percent too big with the tail trailing the head. Stash the lean
+     and let updateCamera finish the job. */
+  DRV.leanT = leanT;
 }
 function resetDriver() {
-  DRV.active = false; DRV.t = 0; DRV.dur = 0;
+  DRV.active = false; DRV.t = 0; DRV.dur = 0; DRV.leanT = 0;
   if (driverFaceMat) { driverFaceMat.map = FACE_CALM; driverFaceMat.needsUpdate = true; }
   if (driverRig) {
     driverRig.position.set(-0.72, 0, 0);
@@ -13240,6 +13257,9 @@ function updateCamera(dt) {
                       fovBase, fovTop + (GAME.superT > 0 ? 10 : 0)) - GAME.camPush * 12;
   camera.fov = damp(camera.fov, fovGoal, 5, dt);
   camera.updateProjectionMatrix();
+
+  // the driver's speech balloon is laid out in this camera's frustum
+  updateBubble(DRV.leanT || 0);
 }
 
 /* ---------------- title screen presentation ---------------- */
