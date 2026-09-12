@@ -452,6 +452,26 @@ canvas{display:block}
 #gradeBadge.gC{background:radial-gradient(circle at 36% 30%,#D6D9E0,#8B93A2 60%,#5A6070)}
 #gradeText{text-align:left;font-size:min(4.0vw,16px);color:var(--ink);max-width:290px;line-height:1.18}
 
+/* ---------- THE CHECKPOINT IS SKIPPABLE, AND NOW IT SAYS SO --------------
+   The U.S. customs sequence runs a little under eight seconds and ANY key or
+   tap has skipped it after the first two for several builds - but nothing on
+   screen ever said so, so on a ninety-second run it read as eight seconds of
+   dead time you had to sit through. One quiet line, at the bottom, under the
+   results card's z-index, and only once the skip window is actually open.  */
+#skipHint{
+  position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);z-index:19;pointer-events:none;display:none;
+  white-space:nowrap;max-width:94vw;padding:7px 15px 8px;border-radius:13px;
+  background:rgba(20,24,31,.62);border:3px solid rgba(20,24,31,.72);
+  box-shadow:0 0 0 2px rgba(255,255,255,.28) inset;
+  color:#FFE6C2;font-size:min(3.4vw,15px);letter-spacing:1.5px;line-height:1;
+  text-shadow:0 1px 0 rgba(0,0,0,.85);
+  animation:skipIn .5s ease-out;
+}
+#skipHint.on{display:block}
+@keyframes skipIn{from{opacity:0;transform:translateX(-50%) translateY(6px)}
+                  to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
 #err{position:fixed;inset:0;z-index:99;display:none;align-items:center;justify-content:center;background:#12161f;padding:24px}
 #err.on{display:flex}
 #err div{max-width:560px;font-size:17px;line-height:1.5;color:#FFD9A8;font-family:system-ui,sans-serif;text-align:center}
@@ -517,8 +537,13 @@ canvas{display:block}
 #touch.title #touchHint{display:block}
 #touchHint b{color:#FFC24A}
 @keyframes hintBob{0%,100%{opacity:.7;transform:translateX(-50%) translateY(3px)}50%{opacity:1;transform:translateX(-50%) translateY(-3px)}}
-/* on the title screen the pause / honk buttons are not useful yet */
+/* on the title screen the pause / honk buttons are not useful yet - and on a
+   390x844 portrait phone the BOOST button is not merely useless, it lands on
+   top of the bottom third of NUEVA PARTIDA and across TOCA PARA EMPEZAR. The
+   two lane buttons are the only thing the title screen is teaching; the horn
+   comes back the moment the van moves. */
 #touch.title #tPause{opacity:.45}
+#touch.title #tHonk{display:none}
 #tLeft{left:calc(14px + env(safe-area-inset-left,0px))}
 #tRight{right:calc(14px + env(safe-area-inset-right,0px))}
 #tHonk{
@@ -731,10 +756,28 @@ body.touch #boostBox{display:none}
    Its own layer, over the HUD and over any card that happens to be open,
    because it can be dealt mid-run (the sim is hard-frozen behind it) or on
    top of the results card when an end-of-run bonus tips the bar over. */
+/* ---------- A DRAFT OWNS THE SCREEN --------------------------------------
+   A level-up earned at the line is dealt ON TOP of the results card, and the
+   scrim was light enough that both were readable at once: "NIVEL 1" landed
+   across "\00a1LLEGASTE!", the three cards sat on the stat grid, and two layers
+   of cream panel bled into each other. Mid-run it was the same fight with the
+   HUD - the banner over TIEMPO and MONEDAS.
+   While a draft is up it is now the only thing on screen. The card behind it
+   is hidden outright (and comes straight back the instant the draft closes),
+   the HUD and the notification column fade to the same .12 the checkpoint
+   close-up already uses, and the scrim itself is heavy enough to lay cards on
+   without the road disappearing.                                           */
+body.drafting .screen{visibility:hidden}
+body.drafting #hud{opacity:.12}
+body.drafting #noteCol{opacity:0;transition:opacity .18s linear}
 #scrLevel{
   position:fixed;inset:0;z-index:40;display:none;
-  align-items:center;justify-content:center;padding:10px;
-  background:radial-gradient(ellipse at 50% 45%,rgba(12,16,26,.62),rgba(6,8,14,.90));
+  /* flex-start + margin:auto on #lvlInner, never align-items:center: a centred
+     flex item taller than its scroll container has its TOP clipped and cannot
+     be scrolled back to, which is how the NIVEL banner ended up cut in half on
+     a 390x844 phone. margin:auto still centres a draft that fits. */
+  align-items:flex-start;justify-content:center;padding:10px;
+  background:radial-gradient(ellipse at 50% 45%,rgba(10,13,22,.88),rgba(4,6,12,.97));
   overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
 }
 #scrLevel.on{display:flex;animation:lvlIn .22s ease-out}
@@ -803,6 +846,7 @@ body.touch #boostBox{display:none}
   box-shadow:0 4px 0 rgba(20,24,31,.35);
 }
 .card3 .cArt canvas{width:100%;height:100%;display:block}
+.card3 .cText{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
 .card3 .cTitle{font-size:15px;letter-spacing:.5px;line-height:1.05;text-align:center;padding:0 9px}
 .card3 .cEff{font-family:system-ui,sans-serif;font-weight:700;font-size:12px;line-height:1.3;
   color:#5C5140;text-align:center;padding:0 10px;flex:1}
@@ -815,8 +859,103 @@ body.touch #boostBox{display:none}
 }
 #lvlHint{margin-top:11px;font-size:min(3.6vw,14px);letter-spacing:1px;color:#B8AE9C}
 #lvlHint .kcap{background:rgba(255,246,232,.16);color:#FFD9A8}
+
+/* ---------- THE DRAFT FITS THE WINDOW, MEASURED --------------------------
+   The three cards are dealt MID-RUN with the simulation hard-frozen behind
+   them, so the player has to be able to read all three at once: the draft may
+   never scroll and may never be clipped. On a 390x844 portrait phone the
+   cards stack one per row and the stack was 1,262 px tall in an 844 px
+   window - the banner was cut off the top, the third card's pick number hung
+   eleven pixels below the bottom edge and the "1 2 3" hint was off screen.
+
+   fitDraftCards() does for the draft exactly what fitScoreBlock() does for
+   the score tables: it MEASURES. It walks this ladder - full card, two shrink
+   steps, then a compact one-line-per-card row, then a tighter row - and stops
+   at the first rung where the whole draft is inside the window. Nothing here
+   is a media query: a measured fit holds at 1280x720, at 390x844 and at the
+   844x390 the touch build is actually played in, which three breakpoints
+   never would.
+
+   Specificity: every rule is #lvlInner.<step> ... so it beats the landscape
+   media queries below, which are the BASELINE these steps shrink from.       */
+#lvlInner.fs1 #lvlBanner{font-size:min(8vw,42px)}
+#lvlInner.fs1 #lvlSub{font-size:min(3.8vw,15px);margin-top:2px}
+#lvlInner.fs1 #lvlCards{gap:8px;margin-top:8px}
+#lvlInner.fs1 .card3{gap:4px;padding-bottom:7px;border-width:4px}
+#lvlInner.fs1 .card3 .cBand{font-size:11px;padding:4px 9px 5px;letter-spacing:1.4px;border-bottom-width:3px}
+#lvlInner.fs1 .card3 .cArt{width:54px;height:54px;margin-top:5px;border-width:3px}
+#lvlInner.fs1 .card3 .cText{gap:4px}
+#lvlInner.fs1 .card3 .cTitle{font-size:13px}
+#lvlInner.fs1 .card3 .cEff{font-size:11px;line-height:1.24}
+#lvlInner.fs1 .card3 .cKey{width:19px;height:19px;line-height:19px;font-size:11px}
+#lvlInner.fs1 .cpip{width:9px;height:9px;border-width:2px}
+#lvlInner.fs1 #lvlHint{margin-top:7px;font-size:12px}
+
+#lvlInner.fs2 #lvlBanner{font-size:min(6.4vw,32px)}
+#lvlInner.fs2 #lvlSub{font-size:min(3.2vw,12px);margin-top:1px;letter-spacing:1px}
+#lvlInner.fs2 #lvlCards{gap:6px;margin-top:6px}
+#lvlInner.fs2 .card3{gap:3px;padding-bottom:5px;border-width:4px;border-radius:13px}
+#lvlInner.fs2 .card3 .cBand{font-size:10px;padding:3px 7px 4px;letter-spacing:1.1px;border-bottom-width:3px}
+#lvlInner.fs2 .card3 .cArt{width:40px;height:40px;margin-top:4px;border-width:3px;border-radius:9px}
+#lvlInner.fs2 .card3 .cText{gap:2px}
+#lvlInner.fs2 .card3 .cTitle{font-size:12px;padding:0 6px}
+#lvlInner.fs2 .card3 .cEff{font-size:10px;line-height:1.2;padding:0 7px}
+#lvlInner.fs2 .card3 .cKey{width:17px;height:17px;line-height:17px;font-size:10px}
+#lvlInner.fs2 .cpip{width:8px;height:8px;border-width:2px}
+#lvlInner.fs2 #lvlHint{margin-top:5px;font-size:11px}
+
+/* ---- THE COMPACT ROW. When even the small card will not fit three times
+   over, the card turns on its side: the category band becomes the colour
+   stripe down its left edge (the colour was always the whole legend), the
+   icon sits beside the name, and the effect line - which is now one short
+   phrase - sits under it. Icon, name, effect, pips and the pick number, one
+   line each, still all three on screen with nothing to scroll.             */
+#lvlInner.row #lvlCards{flex-direction:column;flex-wrap:nowrap;align-items:stretch;
+  gap:8px;margin-top:9px;perspective:none}
+#lvlInner.row .card3{
+  flex:0 0 auto;width:100%;max-width:none;min-width:0;
+  flex-direction:row;align-items:center;gap:9px;
+  padding:0 10px 0 0;border-width:4px;border-radius:13px;
+  transform-origin:50% 50%;animation-name:cardDealRow;
+}
+#lvlInner.row .card3 .cBand{
+  flex:none;align-self:stretch;width:11px;padding:0;
+  font-size:0;line-height:0;letter-spacing:0;text-shadow:none;
+  border-bottom:0;border-right:4px solid var(--ink);
+}
+#lvlInner.row .card3 .cArt{width:40px;height:40px;margin:6px 0 6px 8px;flex:none;
+  border-width:3px;border-radius:9px}
+#lvlInner.row .card3 .cText{flex:1 1 auto;min-width:0;gap:1px;padding:6px 0;text-align:left}
+#lvlInner.row .card3 .cTitle{text-align:left;padding:0;font-size:14px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lvlInner.row .card3 .cEff{text-align:left;padding:0;font-size:11.5px;flex:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lvlInner.row .card3 .cPips{flex:none;padding:0}
+#lvlInner.row .card3 .cKey{margin:0;flex:none}
+/* a card as wide as the screen and 56 px tall reads as a slot machine if it
+   flips in 3D, so the row layout deals with a straight drop instead */
+@keyframes cardDealRow{
+  0%{opacity:0;transform:translateY(24px) scale(.95)}
+  62%{opacity:1;transform:translateY(-3px) scale(1.01)}
+  100%{opacity:1;transform:translateY(0) scale(1)}
+}
+#lvlInner.row .card3.taken{animation-name:cardTake}
+#lvlInner.row .card3.drop{animation-name:cardDrop}
+
+#lvlInner.rw1 #lvlBanner{font-size:min(5.6vw,26px)}
+#lvlInner.rw1 #lvlSub{font-size:10px;margin-top:0;letter-spacing:.5px}
+#lvlInner.rw1 #lvlCards{gap:5px;margin-top:6px}
+#lvlInner.rw1 .card3{gap:7px;border-width:3px;padding:0 8px 0 0}
+#lvlInner.rw1 .card3 .cBand{width:8px;border-right-width:3px}
+#lvlInner.rw1 .card3 .cArt{width:30px;height:30px;margin:4px 0 4px 6px;border-width:2px;border-radius:7px}
+#lvlInner.rw1 .card3 .cText{padding:4px 0}
+#lvlInner.rw1 .card3 .cTitle{font-size:12px}
+#lvlInner.rw1 .card3 .cEff{font-size:10px}
+#lvlInner.rw1 .card3 .cKey{width:17px;height:17px;line-height:17px;font-size:10px}
+#lvlInner.rw1 .cpip{width:7px;height:7px;border-width:2px}
+#lvlInner.rw1 #lvlHint{margin-top:4px;font-size:10px}
 /* the gold burst behind the deal - 24 CSS chips, gone in a second and a half */
-#lvlBurst{position:absolute;inset:-40% -10%;overflow:hidden;pointer-events:none;z-index:-1}
+#lvlBurst{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:-1}
 #lvlBurst i{position:absolute;left:50%;top:46%;width:9px;height:9px;border-radius:2px;opacity:0;
   animation:lvlSpark 1.5s ease-out forwards}
 @keyframes lvlSpark{
@@ -1174,7 +1313,7 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
 
   <div id="coinBox"><div class="mxbar"></div><div class="coinIcon"></div><div id="coinVal">0</div><div id="multPill">x2</div>
     <div id="xpCell"><div class="cLbl">MONEDAS</div><div id="xpTrack"><div id="xpFill"></div></div></div>
-    <div id="xpLvl">N0</div></div>
+    <div id="xpLvl">Nv0</div></div>
 
   <div id="progWrap">
     <div class="flagIcon flagMX"></div>
@@ -1366,6 +1505,10 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   </div>
 </div>
 
+<!-- the customs gag has been skippable by any key or tap for several builds;
+     this is the line that finally says so, and only while it is true -->
+<div id="skipHint">TOCA PARA CONTINUAR</div>
+
 <div id="errbox">
   <button id="errboxX" type="button" aria-label="Cerrar">&times;</button>
   <div class="eh">ERROR &mdash; MANDA ESTA FOTO</div>
@@ -1453,21 +1596,22 @@ try {
                  papel picado, the far banks - so the dressing stretches with
                  the deck instead of bunching up at the Mexican end.
 
-   THE NUMBER IS SET BY THE CLOCK, NOT BY THE MAP. A measured clean run at
-   1.48 finished in 60 s of displayed TIEMPO - not the ~90 s it looked like -
-   and the brief is a two-minute crossing, so the scale is solved against the
-   stopwatch rather than guessed. The run time is very nearly linear in
+   THE NUMBER IS SET BY THE CLOCK, NOT BY THE MAP. It is solved against a
+   measured stopwatch, never guessed. The run time is very nearly linear in
    COURSE_SCALE (every stretch of the speed-cap curve scales with it), at
-   about 34.2 s per unit of scale plus ~3.4 s of run-up, so 3.55 lands a clean
-   no-card run at ~2:05, a well-equipped one at ~1:58 and a run that takes
-   fifty hits at ~2:35. It turns the old ~3,100 units of obstacle course into
-   ~10,650 (FINISH_D 5,014 -> 11,455).
+   about 34.6 s per unit of scale plus ~3.4 s of run-up.
 
-   Note this is well past the 1.9-2.0 the brief estimated: that estimate
-   assumed the run was already 90 s and scaled linearly from there. From a
-   measured 60 s, two minutes needs roughly double.
+   THE TARGET IS A NINETY-SECOND CROSSING. 3.55 shipped a 2:05 run, which was
+   too long to want to repeat; 2.53 lands a clean no-card run at ~1:31, a
+   well-equipped one at ~1:26 and a run that takes fifty hits at ~1:50.
+   The obstacle course is ~7,650 units and FINISH_D ~8,280.
+
+   THE CURVE IS UNCHANGED BY THIS. speedCapAt() reads the FRACTION of the
+   course covered, not the distance, so shortening the course re-fits the
+   whole speed ladder to it automatically: the same km/h at the same percent
+   of the crossing, and the same share of the clock spent in each stretch.
    --------------------------------------------------------------------------- */
-var COURSE_SCALE = 3.55;
+var COURSE_SCALE = 2.53;
 var COURSE_ORIGIN = 95;
 function courseD(v) { return Math.round(COURSE_ORIGIN + (v - COURSE_ORIGIN) * COURSE_SCALE); }
 function bridgeD(v) { return Math.round(v * COURSE_SCALE); }
@@ -1487,7 +1631,8 @@ var CFG = {
   PLAZA_LEN:     560,
 
   /* --- speeds (world units / second) ------------------------------------
-     THE LADDER, retuned for a two-minute crossing.
+     THE LADDER. Fitted to the FRACTION of the course, not to its length,
+     so it survives a re-scale untouched.
 
      V_CRUISE is the cap AT THE START LINE, not a mid-course cruise: the run
      opens at 54 (135 km/h) rather than the old 44 (110), so the first fifteen
@@ -1643,10 +1788,9 @@ function laneX(i) { return (i - (CFG.LANES - 1) * 0.5) * CFG.LANE_W; }
    The top speed the van can hold under its own power at distance d.
 
    The old curve climbed LINEARLY from cruise to V_MAX over the first 60% of
-   the course and then sat flat for the remaining 40%. On a ninety-second run
-   that was fine; on a two-minute one it means the crossing stops getting
-   faster two thirds of the way in and the finale is no quicker than the
-   middle - the exact opposite of how a run should build.
+   the course and then sat flat for the remaining 40%, so the crossing stopped
+   getting faster two thirds of the way in and the finale was no quicker than
+   the middle - the exact opposite of how a run should build.
 
    It is an ease-in now, over the WHOLE obstacle course:
 
@@ -5777,18 +5921,45 @@ function wrapLines(g, text, maxW) {
 
 /* cartoon speech bubble with a phrase. tailRight = the tail hangs off the
    RIGHT-hand side (used when the balloon sits to the LEFT of the driver). */
+/* ---------------------------------------------------------------------------
+   LEGIBILITY, not decoration.
+
+   "\u00a1Ay no! \u00a1Se me olvid\u00f3 la factura!" is the one line the whole game is
+   built around and it was drawn in POST-BOX RED with a four-pixel ink stroke
+   AROUND it, on a cream balloon, in front of a white van flank, a red STOP
+   board and a lit booth. Red on cream is a weak contrast to begin with; a dark
+   stroke on the OUTSIDE of red letterforms then fills in their counters at any
+   size the balloon is actually drawn at, and the whole thing turns into a
+   maroon smear on a busy frame. The same treatment made "\u00a1Chin!" hard to read
+   mid-run at 300 km/h.
+
+   Four changes, all of them contrast:
+     - the text is NEAR-BLACK (a very dark red-brown, so it still belongs to
+       the palette) instead of red: ~14:1 against the balloon face instead of
+       ~3.5:1;
+     - the halo around it is LIGHT, not dark. A light stroke can only ever add
+       separation; a dark one eats the letters from the outside in;
+     - the type is bigger (78 -> 92 px start, never below 32) and sits in a
+       slightly roomier box, so it fills the balloon instead of floating in it;
+     - the balloon itself is an OPAQUE face inside a thicker ink border, with a
+       soft dark drop shadow behind it so it lifts off whatever is behind it.
+   --------------------------------------------------------------------------- */
 function makeBubbleTexture(text, tailRight) {
   var key = text + '|' + (tailRight ? 'R' : 'L');
   if (BUBBLE_TEX[key]) return BUBBLE_TEX[key];
   var W = 640, H = 320, c = cv(W, H), g = c.getContext('2d');
   g.clearRect(0, 0, W, H);
   var TAIL = 86;                       // vertical room reserved for the tail
-  function bub(inset, fill) {
+  /* the outline is built once and filled as many times as it takes: the drop
+     shadow, the ink border and the face are the same shape at three insets */
+  function bubPath(inset, drop) {
     var x = inset, y = inset, w = W - inset * 2, h = H - TAIL - inset * 2, r = 40;
+    var dy = drop || 0;
     // the tail leaves the bottom edge on the side that faces the driver
-    var t0 = tailRight ? (x + w * 0.70) : (x + w * 0.30);
     var t1 = tailRight ? (x + w * 0.58) : (x + w * 0.42);
+    var t0 = tailRight ? (x + w * 0.70) : (x + w * 0.30);
     var tp = tailRight ? (x + w * 0.86) : (x + w * 0.14);
+    y += dy;
     g.beginPath();
     g.moveTo(x + r, y);
     g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -5805,33 +5976,54 @@ function makeBubbleTexture(text, tailRight) {
     g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
     g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
     g.closePath();
-    g.fillStyle = fill; g.fill();
   }
-  bub(0, '#14181f');
-  bub(10, '#FFF6E8');
+  /* 1. the shadow, so the balloon separates from the checkpoint behind it */
+  g.save();
+  g.globalAlpha = 0.42;
+  g.filter = 'blur(7px)';
+  bubPath(14, 13); g.fillStyle = '#0a0c11'; g.fill();
+  g.restore();
+  /* the blur filter is not universal - a second, un-blurred offset copy at a
+     low alpha gives the same lift wherever it is missing, and costs nothing
+     where it is not */
+  g.save();
+  g.globalAlpha = 0.28;
+  bubPath(12, 11); g.fillStyle = '#0a0c11'; g.fill();
+  g.restore();
+  /* 2. a THICK ink border and an OPAQUE face */
+  bubPath(4);  g.fillStyle = '#14181f'; g.fill();
+  bubPath(17); g.fillStyle = '#FFFCF0'; g.fill();
 
-  var boxW = W - 76, boxH = H - TAIL - 52;
+  var boxW = W - 64, boxH = H - TAIL - 42;
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.lineJoin = 'round'; g.miterLimit = 2;
   // fit: shrink until both the widest line and the stack of lines fit
-  var px = 78, lines;
+  var px = 92, lines;
   for (var guard = 0; guard < 60; guard++) {
-    g.font = 'bold ' + px + 'px "Arial Black", Impact, sans-serif';
+    g.font = '900 ' + px + 'px "Arial Black", Impact, sans-serif';
     lines = wrapLines(g, text, boxW);
     var widest = 0;
     for (var i = 0; i < lines.length; i++) widest = Math.max(widest, g.measureText(lines[i]).width);
-    if (widest <= boxW && lines.length * px * 1.12 <= boxH) break;
+    if (widest <= boxW && lines.length * px * 1.10 <= boxH) break;
     px -= 3;
-    if (px < 22) break;
+    if (px < 32) break;
   }
-  var lh = px * 1.12;
-  var cy = (H - TAIL) * 0.5 - (lines.length - 1) * lh * 0.5;
-  g.lineWidth = Math.max(4, px * 0.16);
+  var lh = px * 1.10;
+  var cy = (H - TAIL) * 0.5 + 6 - (lines.length - 1) * lh * 0.5;
   for (var k = 0; k < lines.length; k++) {
-    g.strokeStyle = '#14181f';
-    g.strokeText(lines[k], W / 2, cy + k * lh);
-    g.fillStyle = '#D8342C';
-    g.fillText(lines[k], W / 2, cy + k * lh);
+    var yy = cy + k * lh;
+    /* a soft shadow UNDER the type, so it sits on the face rather than on top
+       of it, then a light halo, then the near-black letter itself */
+    g.lineWidth = Math.max(5, px * 0.16);
+    g.strokeStyle = 'rgba(20,24,31,0.18)';
+    g.strokeText(lines[k], W / 2, yy + Math.max(2, px * 0.045));
+    g.fillStyle = 'rgba(20,24,31,0.18)';
+    g.fillText(lines[k], W / 2, yy + Math.max(2, px * 0.045));
+    g.lineWidth = Math.max(4, px * 0.10);
+    g.strokeStyle = '#FFFCF0';
+    g.strokeText(lines[k], W / 2, yy);
+    g.fillStyle = '#22100C';
+    g.fillText(lines[k], W / 2, yy);
   }
   var t = new THREE.CanvasTexture(c);
   t.anisotropy = MAXANISO;
@@ -6180,7 +6372,9 @@ function updateBubble(leanT) {
      the viewport at its own depth, and its centre is then clamped so the whole
      thing - tail included - is always fully on screen. */
   var aspect = camera.aspect || 1;
-  var frac = (aspect < 1) ? 0.375 : 0.235;            // fraction of the viewport width
+  /* a little larger than it was: the balloon carries the only piece of
+     writing in the game that is a JOKE, and it is read in about a second */
+  var frac = (aspect < 1) ? 0.400 : 0.255;            // fraction of the viewport width
   var dA = camera.position.distanceTo(_bAnchor);
   var dB = Math.max(1.2, dA - 1.2);
   var hFull = 2 * dB * Math.tan(camera.fov * Math.PI / 360);
@@ -8563,9 +8757,10 @@ function updateWarns() {
              Steering keeps working the whole time, and it is scheduled inside
              a ZONA TURBO in the second half, where hazards are sparse.
      police  a Mexican police pickup runs alongside with its lights on for a
-             few seconds before the boundary, then pulls ahead and peels off.
-             Decorative: it holds the outer lane FURTHEST from the van and
-             leaves early if the player crowds it, so it can never be hit.
+             few seconds, then pulls ahead and peels off. It holds the lane
+             FURTHEST from the van, commits to it, and lifts off rather than
+             swerving if the van closes in - so it cannot run into you, but
+             you can certainly run into it.
      heli    a helicopter crosses overhead near the US side.
 
    All of the state lives in MOMENT and is wiped by resetMoments(), which
@@ -8576,12 +8771,23 @@ var WAVE_AMP = 1.45, WAVE_DUR = 2.6;
 var MOMENT = {
   wave: -1, birds: -1, wind: -1, police: -1, heli: -1,
   windDir: 0, policeSide: -1, policeD: 0, policeOff: 0, heliX: 0, heliZ: 0,
+  /* the patrol's steering state: which lane it is committed to, where its
+     eased lane change started and how far through it is, which way it is
+     currently moving, and the three timers that keep it committed */
+  policeLane: -1, policeX: 0, policeHit: false, policeDPrev: 0,
+  policeFromX: 0, policeSlideT: 1, policeSlideDur: 0.62, policeDir: 0,
+  policeHold: 0, policeTurnT: 0, policeYield: 0, policeClear: false,
   fired: { wave: 0, birds: 0, wind: 0, police: 0, heli: 0 }
 };
 function resetMoments() {
   MOMENT.wave = MOMENT.birds = MOMENT.wind = MOMENT.police = MOMENT.heli = -1;
   MOMENT.windDir = 0; MOMENT.policeD = 0; MOMENT.policeOff = 0;
   MOMENT.heliX = 0; MOMENT.heliZ = 0;
+  MOMENT.policeLane = -1; MOMENT.policeX = 0; MOMENT.policeHit = false;
+  MOMENT.policeDPrev = 0; MOMENT.policeFromX = 0; MOMENT.policeSlideT = 1;
+  MOMENT.policeSlideDur = POL_SLIDE; MOMENT.policeDir = 0;
+  MOMENT.policeHold = 0; MOMENT.policeTurnT = 0; MOMENT.policeYield = 0;
+  MOMENT.policeClear = false;
   MOMENT.fired.wave = MOMENT.fired.birds = MOMENT.fired.wind = 0;
   MOMENT.fired.police = MOMENT.fired.heli = 0;
   GAME.windX = 0;
@@ -8789,82 +8995,100 @@ function buildPolice() {
   policeTruck = g;
 }
 /* ===========================================================================
-   THE PATROL CAR
+   THE PATROL CAR  -  A COP MINDING ITS OWN BUSINESS
 
-   It used to converge on the player. The script parked it "beside you" at an
-   offset of +2 for three and a half seconds, its lane was chosen ONCE from
-   where the van happened to be when the siren started, and the only thing
-   that ever moved it afterwards was traffic - so the moment the player
-   changed lanes into it, or it swerved round a truck into them, it simply sat
-   there and the pull-over fired. From the seat that reads as a cop that aims
-   for you, which is exactly what it was.
+   Two builds ago it converged on the player, so it read as a car that aimed
+   for you. The fix for that over-corrected: it re-picked its lane on a 0.25 s
+   timer whenever the van was anywhere near, snapped across on a lambda-9
+   damp, and every frame it also REFUSED any proposed position that would
+   overlap the van - it simply froze for that frame and carried on. Three
+   different things fighting each other at 60 Hz is a stutter, and the two
+   readable symptoms were exactly what got reported: it lunges at you, then it
+   swerves off.
 
-   It now actively avoids the van, under three rules:
+   All three are gone. What is left is a car with a driver in it:
 
-     BERTH      it never picks the van's lane, and never a lane inside
-                POL_BERTH of where the van actually is. If the van moves into
-                its lane it re-picks IMMEDIATELY (a 0.25 s commit instead of
-                the usual 0.7) and eases across.
-     STAND-OFF  while it is laterally close to the van it is not allowed to
-                sit alongside either: the scripted offset is pushed out of the
-                +/- POL_SAFE_D band on whichever side it is already on, so it
-                brakes back or pulls ahead instead of converging.
-     NEVER CLOSE  the hard one. Every frame it proposes a new (d, x); if that
-                proposal overlaps the van and its PREVIOUS position did not,
-                the patrol is the one doing the closing, and the move is
-                simply refused - it holds station and the van goes past. If
-                the overlap is there at the OLD position too, the van drove
-                into it, and that collision is allowed to land.
+     ONE CONTINUOUS PACE     the scripted offset used to STEP from -12 to +2 in
+                             a single frame at t = 1.1 s. That step, damped, is
+                             the lunge. It is now one eased curve from "coming
+                             up behind you" through "passing" to "away up the
+                             road", with no discontinuity anywhere in it.
+     A COMMITTED LANE        a target lane is held for POL_COMMIT seconds and is
+                             only re-picked when something actually changed -
+                             traffic shut the lane, or the van moved into it.
+                             It prefers a lane TWO or more away from the van,
+                             and once it has two lanes of clearance it stops
+                             reading the van at all and just drives.
+     AN EASED LANE CHANGE    the same smoothstep the traffic merges on, scaled
+                             so one lane always takes POL_SLIDE seconds however
+                             many it crosses. There is no per-frame clamp and
+                             no refusal in here: the car is always exactly
+                             where a continuous curve says it is.
+     IT YIELDS, IT NEVER     if the van closes in and there is nowhere to go,
+     DARTS                   it lifts off and drops back. A lane change that
+                             would carry it TOWARD the van's side while it is
+                             alongside is paused, not reversed, and a re-pick
+                             that would reverse the slide inside POL_TURN_GAP
+                             is refused in favour of backing off. So its
+                             lateral velocity is never once pointed at the van.
 
-   So a collision is only ever possible when the player steers into the car.
-   PLACAS FRONTERIZAS widens the berth and the stand-off, and adds a 25-unit
-   no-merge zone directly ahead of the van.
+   The consequence that matters: it will not dodge a late swerve. Hold your
+   lane and it cannot touch you; steer into it and you have hit a police car,
+   which is the whole point of it being there.
    =========================================================================== */
 var POL_HW = 1.10, POL_HL = 2.60, POL_LOOK = 60, POL_GAP = 5.0;
 var POL_BERTH = 3.10;          // lateral clearance it steers to keep
 var POL_SAFE_D = 12.0;         // longitudinal band it will not sit in when close
 var POL_HIT_X = 2.38, POL_HIT_D = 5.8;      // the contact box, unchanged
+var POL_COMMIT = 1.8;          // seconds a target lane is held before a re-pick
+var POL_SLIDE = 0.62;          // seconds PER LANE of the eased lane change
+var POL_TURN_GAP = 0.9;        // seconds that must pass between direction changes
+var POL_CLEAR_LANES = 2;       // this far away and it stops reading the van
 function policeBerth() { return POL_BERTH + (MODS.placas ? 1.9 : 0); }
 function policeStandoff() { return POL_SAFE_D + (MODS.placas ? 8 : 0); }
 /* is the patrol, at (d, x), actually touching the van right now? */
 function polHits(d, x) {
   return Math.abs(x - GAME.x) < POL_HIT_X && Math.abs(d - GAME.dist) < POL_HIT_D;
 }
-/* the lane it wants: the one furthest from the van that is clear of traffic.
-   The van's own lane is never a candidate, at any price. */
+function polLaneBlocked(d, L) {
+  return !!laneBlocker(d - 6, laneX(L), POL_HW, POL_HL, POL_LOOK);
+}
+/* The lane it wants: two or more lanes away from the van wherever one exists,
+   clear of traffic, and never the van's own lane at any price. The lane it is
+   already committed to carries a large bonus, so the hysteresis lives in the
+   SCORE as well as in the commit timer - a marginal difference never moves it. */
 function policeWantLane(d) {
   var berth = policeBerth();
-  var best = -1, bestScore = -1e9, L, lat, score;
+  var best = -1, bestScore = -1e9, L, away, score;
   for (L = 0; L < CFG.LANES; L++) {
     if (L === GAME.lane) continue;
-    lat = Math.abs(laneX(L) - GAME.x);
-    if (lat < berth) continue;
-    score = lat;
-    if (laneBlocker(d - 6, laneX(L), POL_HW, POL_HL, POL_LOOK)) score -= 40;
-    if (L === MOMENT.policeLane) score += 6;          // hysteresis: prefer to stay put
+    if (Math.abs(laneX(L) - GAME.x) < berth) continue;
+    away = Math.abs(L - GAME.lane);
+    score = (away >= POL_CLEAR_LANES ? 100 : 0) + away * 10;
+    if (polLaneBlocked(d, L)) score -= 55;
+    if (L === MOMENT.policeLane) score += 30;
     if (score > bestScore) { bestScore = score; best = L; }
   }
-  if (best >= 0) return best;
-  /* boxed in on every side: take whichever lane is furthest from the van
-     anyway. Two lanes away and blocked beats nought lanes away and clear. */
-  bestScore = -1e9;
-  for (L = 0; L < CFG.LANES; L++) {
-    if (L === GAME.lane) continue;
-    lat = Math.abs(laneX(L) - GAME.x);
-    if (lat > bestScore) { bestScore = lat; best = L; }
-  }
-  return best >= 0 ? best : MOMENT.policeLane;
+  return best;
 }
 function startPolice() {
   if (!policeTruck) return;
   MOMENT.police = 0;
   MOMENT.policeHit = false;
-  MOMENT.policeHold = 0;
   MOMENT.policeLane = -1;
-  MOMENT.policeLane = policeWantLane(GAME.dist);
+  var want = policeWantLane(GAME.dist);
+  MOMENT.policeLane = (want >= 0) ? want : (GAME.lane <= 1 ? CFG.LANES - 1 : 0);
   MOMENT.policeX = laneX(MOMENT.policeLane);
+  MOMENT.policeFromX = MOMENT.policeX;
+  MOMENT.policeSlideT = 1;                        // it arrives already in lane
+  MOMENT.policeSlideDur = POL_SLIDE;
+  MOMENT.policeDir = 0;
+  MOMENT.policeHold = POL_COMMIT;
+  MOMENT.policeTurnT = POL_TURN_GAP;
+  MOMENT.policeYield = 0;
+  MOMENT.policeClear = false;
   MOMENT.policeSide = MOMENT.policeX < GAME.x ? -1 : 1;
-  MOMENT.policeOff = -22;                         // catching up from behind
+  MOMENT.policeOff = -24;                         // catching up from behind
   MOMENT.policeD = GAME.dist + MOMENT.policeOff;
   MOMENT.policeDPrev = MOMENT.policeD;
   policeTruck.visible = true;
@@ -8875,60 +9099,112 @@ function updatePolice(dt) {
   if (MOMENT.police < 0) return;
   MOMENT.police += dt;
   var t = MOMENT.police;
-  var prevD = MOMENT.policeD, prevX = MOMENT.policeX;
+  MOMENT.policeHold = Math.max(0, (MOMENT.policeHold || 0) - dt);
+  MOMENT.policeTurnT = (MOMENT.policeTurnT || 0) + dt;
+  MOMENT.policeYield = Math.max(0, (MOMENT.policeYield || 0) - dt);
 
-  /* ---- the scripted pace, as an OFFSET from the van. Damping an absolute
+  /* ---- ONE CONTINUOUS PACE, as an OFFSET from the van. Damping an absolute
      distance against a van doing a hundred units a second would leave the
      escort permanently off the back of the chase camera. */
-  var tgtOff = (t < 1.1) ? -12 : (t < 4.6) ? 2.0 : (26 + (t - 4.6) * 48);
+  var tgtOff;
+  if (t < 1.5) tgtOff = lerp(-24, -9, easeInOutCubic(t / 1.5));
+  else if (t < 4.6) tgtOff = lerp(-9, 6, easeInOutCubic((t - 1.5) / 3.1));
+  else tgtOff = 6 + (t - 4.6) * 48;
 
-  /* ---- RULE 1: THE BERTH. Re-pick the lane the instant the van crowds it or
-     shares it; otherwise re-pick on the usual commit timer.
-
-     CROWDED COUNTS THE DRIFT, not just the gap. A player halfway through a
-     lane change toward the patrol is already crowding it: waiting until they
-     have arrived leaves the car the ~0.7 s of its own slide to get clear in,
-     which is exactly long enough to be caught. So a van that is MOVING toward
-     it counts as crowding from nearly twice the distance out. */
-  MOMENT.policeHold = Math.max(0, (MOMENT.policeHold || 0) - dt);
-  var berth = policeBerth();
   var sep = Math.abs(MOMENT.policeX - GAME.x);
-  var toward = (MOMENT.policeX - GAME.x) * (GAME.latVel || 0) > 0;
-  var crowded = sep < berth || (toward && sep < berth * 1.8);
-  if (crowded || MOMENT.policeLane === GAME.lane || MOMENT.policeHold <= 0) {
+  var gap = Math.abs(MOMENT.policeD - GAME.dist);
+  var sameLane = (MOMENT.policeLane === GAME.lane);
+
+  /* ---- CLEAR OF HIM? Two lanes of separation with the slide finished, and it
+     stops steering because of the van entirely - it will still not merge into
+     an occupied lane, because no driver does, but it does not dodge any more.
+     If the van comes back to it, it is reading the road again. */
+  if (!MOMENT.policeClear && MOMENT.policeSlideT >= 1 && !sameLane &&
+      sep >= CFG.LANE_W * POL_CLEAR_LANES - 0.4) MOMENT.policeClear = true;
+  else if (MOMENT.policeClear && (sameLane || sep < CFG.LANE_W * 1.2)) MOMENT.policeClear = false;
+
+  /* ---- THE LANE, COMMITTED. Never re-picked inside POL_COMMIT, and after
+     that only when something has actually changed. Crowding does NOT force an
+     early re-pick any more: that was the swerve. Crowding makes it yield. */
+  var blocked = polLaneBlocked(MOMENT.policeD, MOMENT.policeLane);
+  var crowded = !MOMENT.policeClear && (sameLane || sep < policeBerth());
+  if (MOMENT.policeHold <= 0 && (blocked || crowded)) {
     var want = policeWantLane(MOMENT.policeD);
     if (want >= 0 && want !== MOMENT.policeLane) {
-      MOMENT.policeLane = want;
-      MOMENT.policeHold = crowded ? 0.25 : 0.70;   // react fast when crowded
-      GHOST_AUDIT.policeSwerves++;
-    } else if (MOMENT.policeHold <= 0) {
-      MOMENT.policeHold = 0.50;
+      var newDir = (laneX(want) > MOMENT.policeX) ? 1 : -1;
+      var reversing = (MOMENT.policeDir !== 0 && newDir !== MOMENT.policeDir);
+      if (!reversing || MOMENT.policeTurnT >= POL_TURN_GAP) {
+        MOMENT.policeFromX = MOMENT.policeX;
+        MOMENT.policeLane = want;
+        MOMENT.policeSlideT = 0;
+        MOMENT.policeSlideDur = POL_SLIDE *
+          Math.max(1, Math.abs(laneX(want) - MOMENT.policeX) / CFG.LANE_W);
+        if (newDir !== MOMENT.policeDir) MOMENT.policeTurnT = 0;
+        MOMENT.policeDir = newDir;
+        MOMENT.policeHold = POL_COMMIT;
+        GHOST_AUDIT.policeSwerves++;
+      } else {
+        MOMENT.policeYield = Math.max(MOMENT.policeYield, 0.6);
+      }
+    } else if (want < 0 && crowded) {
+      MOMENT.policeYield = Math.max(MOMENT.policeYield, 0.6);   // boxed in
     }
   }
+  /* ---- and the van closing in on it, whatever the timers say, is always a
+     reason to lift off - never a reason to steer. */
+  if (crowded && gap < POL_HIT_D + 10) {
+    if (MOMENT.policeYield <= 0) GHOST_AUDIT.policeBrakes++;
+    MOMENT.policeYield = Math.max(MOMENT.policeYield, 0.6);
+  }
 
-  /* ---- RULE 2: THE STAND-OFF. While it is still laterally close it may not
-     ride alongside: push the target offset out of the danger band on the side
-     it is already on, so it brakes away or peels off ahead. PLACAS
-     FRONTERIZAS also keeps it out of the 25 units directly in front. */
+  /* ---- THE STAND-OFF. While it is still beside him it may not ride alongside
+     either: push the target offset out of the danger band on the side it is
+     already on. PLACAS FRONTERIZAS also keeps it out of the 25 units ahead. */
   var standoff = policeStandoff();
   var noAhead = MODS.placas ? 25 : 0;
-  if (crowded || sep < berth + CFG.LANE_W * 0.5) {
+  if (!MOMENT.policeClear && sep < policeBerth() + CFG.LANE_W * 0.5) {
     var lo = -standoff, hi = Math.max(standoff, noAhead);
     if (tgtOff > lo && tgtOff < hi) tgtOff = (tgtOff >= 0) ? hi : lo;
   }
-  /* and it gets out of the way FASTER once it is crowded: 2.8 / 4.0 are the
-     rates of a car cruising beside you, which is not what this is any more */
-  MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, crowded ? 5.5 : 2.8, dt);
+  /* The yield is deliberately GENTLE - lambda 3 onto three quarters of the
+     stand-off. Hard enough that a van drifting toward it gets out of jail;
+     soft enough that a deliberate, committed ram still connects, which is the
+     one collision this car is supposed to allow. */
+  if (MOMENT.policeYield > 0) tgtOff = Math.min(tgtOff, -standoff * 0.75);
+  MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, MOMENT.policeYield > 0 ? 3.0 : 2.6, dt);
   var newD = GAME.dist + MOMENT.policeOff;
-  var newX = damp(MOMENT.policeX, laneX(MOMENT.policeLane), crowded ? 9.0 : 4.0, dt);
+
+  /* ---- THE LANE CHANGE. Smoothstep, exactly like updateTrafficMerge, over
+     POL_SLIDE seconds PER LANE - so however far it moves, its lateral speed
+     peaks at the same 1.5 * LANE_W / POL_SLIDE an ordinary lane change does.
+     It is PAUSED (never reversed, never refused) if finishing it would carry
+     the car toward the side the van is on while the two are alongside. */
+  var newX;
+  if (MOMENT.policeSlideT < 1) {
+    var toVan = GAME.x - MOMENT.policeX;
+    var toTgt = laneX(MOMENT.policeLane) - MOMENT.policeX;
+    var intoHim = (toVan * toTgt > 0) && !MOMENT.policeClear &&
+                  Math.abs(toVan) < CFG.LANE_W * 1.35 && gap < POL_HIT_D + 6;
+    if (intoHim) {
+      MOMENT.policeYield = Math.max(MOMENT.policeYield, 0.5);
+      newX = MOMENT.policeX;                       // hold the wheel where it is
+    } else {
+      MOMENT.policeSlideT = Math.min(1, MOMENT.policeSlideT + dt / Math.max(0.1, MOMENT.policeSlideDur));
+      var p = MOMENT.policeSlideT, e = p * p * (3 - 2 * p);
+      newX = lerp(MOMENT.policeFromX, laneX(MOMENT.policeLane), e);
+      if (MOMENT.policeSlideT >= 1) MOMENT.policeDir = 0;
+    }
+  } else {
+    newX = laneX(MOMENT.policeLane);
+    MOMENT.policeDir = 0;
+  }
 
   /* ---- it reads the road like everything else on it. Blocked in its lane:
-     hold station behind the obstruction rather than drive through it. */
-  var polV = dt > 0 ? (newD - (MOMENT.policeDPrev === undefined ? newD : MOMENT.policeDPrev)) / dt : GAME.speed;
-  if (!isFinite(polV) || polV < 0) polV = GAME.speed;
+     hold station behind the obstruction rather than drive through it. Both of
+     these are LONGITUDINAL corrections only - neither touches newX, so neither
+     can put a step in the lateral motion. */
   var polFront = laneBlocker(newD, newX, POL_HW, POL_HL, POL_GAP + 2);
   if (polFront && polFront.gap < POL_GAP) {
-    GHOST_AUDIT.policeBrakes++;
     newD += Math.min(0, polFront.gap - POL_GAP);
   }
   var over = boxOverlap(newD, newX, POL_HW, POL_HL);
@@ -8938,23 +9214,14 @@ function updatePolice(dt) {
     newD = (pu.d >= newD) ? (pu.d - pu.halfL - POL_HL - 0.35)
                           : (pu.d + pu.halfL + POL_HL + 0.35);
   }
-
-  /* ---- RULE 3: IT NEVER CLOSES. If the move it is about to make would put
-     it inside the van and its PREVIOUS position was clear, the patrol is the
-     one doing the closing: refuse the move outright. If the old position is
-     inside the van too, the van drove into IT, and that is allowed to land -
-     which is what keeps a deliberate ram a real collision. */
-  if (polHits(newD, newX) && !polHits(prevD, prevX)) {
-    newD = prevD; newX = prevX;
-    GHOST_AUDIT.policeBrakes++;
-  }
   MOMENT.policeD = newD;
   MOMENT.policeX = newX;
   MOMENT.policeOff = newD - GAME.dist;
   MOMENT.policeDPrev = newD;
 
   policeTruck.position.set(newX, roadHeightAt(newD), -newD);
-  policeTruck.rotation.y = damp(policeTruck.rotation.y, 0, 6, dt);
+  policeTruck.rotation.y = damp(policeTruck.rotation.y,
+    (MOMENT.policeSlideT < 1) ? -MOMENT.policeDir * 0.10 : 0, 6, dt);
   if (!MOMENT.policeHit && GAME.state === 'PLAYING' && !GAME.airborne &&
       !jumpClearZone(GAME.dist) && polHits(newD, newX)) {
     beginPullOver();
@@ -12804,7 +13071,11 @@ function makeTauntTexture(text) {
   g.strokeStyle = '#14181f'; g.lineWidth = 12; g.stroke();
   g.fillStyle = '#FFF6E8';
   g.fillRect(W * 0.37, H - 70, W * 0.14, 14);
-  inkText(g, text, W * 0.5, H * 0.40, W * 0.80, 66, '#c25400', 9);
+  /* near-black, not orange behind a fat ink stroke: CHUY shouts this at you
+     at 250 km/h and it has to be readable in the half second it is up. The
+     stroke comes down from 9 to 4 as well - at 9 it was eating the counters
+     out of the letters, which is what turned the word into a blob. */
+  inkText(g, text, W * 0.5, H * 0.40, W * 0.80, 66, '#2A1206', 4);
   RIVAL_BUB_TEX[text] = signTex(c);
   return RIVAL_BUB_TEX[text];
 }
@@ -13105,7 +13376,8 @@ function updateRival(dt) {
    STORAGE
      rr_cards_v1   sessionStorage  {xp, level, deck:{id:level}}
                    -> survives a reload in the same tab, dies with it
-     rr_scores     localStorage    the top ten, with names
+     rr_scores_v9_90s  localStorage  the top ten, with names. Keyed to the
+                   course length: see BEST_KEY for why.
      rr_lastname   localStorage    what to pre-fill the name box with
      rr_wallet / rr_upgrades       DELETED at boot (the old economy)
    ================================================================ */
@@ -13146,42 +13418,48 @@ var CARD_CATS = {
   economy:    'ECONOM\u00cdA',
   utility:    'UTILIDAD'
 };
+/* THE EFFECT LINE IS A LABEL, NOT A SENTENCE. It is read in the two seconds
+   between "NIVEL 4" landing and a finger going down, on a card that is 150 px
+   wide on a phone - so every one of these is the shortest plain Spanish that
+   still says what the card does, under ~28 characters, and a bare number
+   wherever a number is the whole point. The NAMES carry the flavour; the pip
+   row under the line carries the level. */
 var CARD_POOL = [
   { id: 'motor', name: 'MOTOR TRUCADO', cat: 'speed', max: 3,
-    eff: function (l) { return 'Velocidad tope +' + (l * 6) + '%'; } },
+    eff: function (l) { return '+' + (l * 6) + '% de velocidad'; } },
   { id: 'susp', name: 'SUSPENSI\u00d3N REFORZADA', cat: 'speed', max: 3,
-    eff: function (l) { return 'Cambio de carril ' + Math.round((1 - Math.pow(0.88, l)) * 100) + '% m\u00e1s r\u00e1pido'; } },
+    eff: function (l) { return 'Cambias de carril m\u00e1s r\u00e1pido'; } },
   { id: 'caja', name: 'CAJA LIGERA', cat: 'speed', max: 2,
-    eff: function (l) { return 'Aceleraci\u00f3n +' + (l * 15) + '%'; } },
+    eff: function (l) { return '+' + (l * 15) + '% de aceleraci\u00f3n'; } },
   { id: 'turbo', name: 'TURBO LARGO', cat: 'boost', max: 3,
-    eff: function (l) { return 'Las rampas verdes duran +' + (l * 0.35).toFixed(2) + ' s'; } },
+    eff: function (l) { return 'El turbo dura m\u00e1s'; } },
   { id: 'gasolina', name: 'GASOLINA PREMIUM', cat: 'boost', max: 2,
-    eff: function (l) { return 'El empuj\u00f3n del turbo +' + (l * 15) + '%'; } },
+    eff: function (l) { return 'El turbo empuja +' + (l * 15) + '%'; } },
   { id: 'nitro', name: 'NITRO DE RESERVA', cat: 'nitro', max: 2,
-    eff: function (l) { return l >= 2 ? 'Arrancas con bid\u00f3n \u00b7 y salen el doble'
-                                      : 'Arrancas cada carrera con un bid\u00f3n'; } },
+    eff: function (l) { return l >= 2 ? 'Empiezas con nitro \u00b7 y el doble'
+                                      : 'Empiezas con nitro'; } },
   { id: 'llantas', name: 'LLANTAS NUEVAS', cat: 'protection', max: 3,
-    eff: function (l) { return 'Conservas ' + Math.round((CFG.HIT_LOSS + l * 0.06) * 100) + '% de velocidad al chocar'; } },
+    eff: function (l) { return 'Pierdes menos al chocar'; } },
   { id: 'carga', name: 'CARGA ASEGURADA', cat: 'protection', max: 2,
-    eff: function (l) { return 'Arrancas con ' + l + ' escudo' + (l > 1 ? 's' : ''); } },
+    eff: function (l) { return 'Empiezas con ' + l + ' escudo' + (l > 1 ? 's' : ''); } },
   { id: 'estampita', name: 'ESTAMPITA DEL TABLERO', cat: 'protection', max: 2,
-    eff: function (l) { return 'El santito anula ' + l + ' golpe' + (l > 1 ? 's' : '') + ' por carrera'; } },
+    eff: function (l) { return 'Anula ' + l + ' golpe' + (l > 1 ? 's' : '') + ' por carrera'; } },
   { id: 'factura', name: 'DOBLE FACTURA', cat: 'economy', max: 3,
-    eff: function (l) { return 'Las monedas valen +' + (l * 40) + '% (XP y puntos)'; } },
+    eff: function (l) { return '+' + (l * 40) + '% en monedas'; } },
   { id: 'iman', name: 'IM\u00c1N DE CARGA', cat: 'economy', max: 3,
-    eff: function (l) { return 'Atrae monedas ' + (l * 0.35).toFixed(2) + ' carriles'; } },
+    eff: function (l) { return 'Atrae las monedas'; } },
   { id: 'racha', name: 'RACHA CALIENTE', cat: 'economy', max: 2,
     eff: function (l) { var a = Math.max(3, Math.round(STREAK_X2 * Math.pow(0.70, l)));
                         var b = Math.max(5, Math.round(STREAK_X3 * Math.pow(0.70, l)));
                         return 'x2 a las ' + a + ' \u00b7 x3 a las ' + b; } },
   { id: 'claxon', name: 'CLAX\u00d3N DE AIRE', cat: 'utility', max: 1,
-    eff: function (l) { return 'El claxon (H) aparta el tr\u00e1fico de tu carril'; } },
+    eff: function (l) { return 'El claxon aparta autos'; } },
   { id: 'placas', name: 'PLACAS FRONTERIZAS', cat: 'utility', max: 1,
-    eff: function (l) { return 'Las patrullas te dan m\u00e1s espacio y no se te cierran'; } },
+    eff: function (l) { return 'Las patrullas te esquivan'; } },
   { id: 'copiloto', name: 'COPILOTO', cat: 'utility', max: 2,
-    eff: function (l) { return 'Los avisos llegan ' + (l * 40) + '% antes \u00b7 el carril bueno brilla'; } },
+    eff: function (l) { return 'Ves los peligros antes'; } },
   { id: 'salto', name: 'SALTO LARGO', cat: 'utility', max: 2,
-    eff: function (l) { return 'Vuelas m\u00e1s lejos \u00b7 el oro del aire vale doble'; } }
+    eff: function (l) { return 'Vuelas m\u00e1s lejos'; } }
 ];
 function cardById(id) {
   for (var i = 0; i < CARD_POOL.length; i++) if (CARD_POOL[i].id === id) return CARD_POOL[i];
@@ -13193,16 +13471,18 @@ function cardById(id) {
    Cumulative, and it escalates, so the first run of a session showers cards
    and the sixth is still handing them out but has to be earned.
      level N needs  XP_BASE * N^XP_POW  coins, all-time, this session
-   Measured against the real course, which is a far richer one than the
-   ninety-second version this replaced - so the base is nothing like the 70 a
-   300-coin run wanted. A clean run banks ~750 XP (roughly 550 coins plus the
-   CHUY bonus) and a decent human run ~620, and both are three level-ups on
-   their own; six of them land at twelve to fourteen cards. Take the paying
-   contracts every time and it runs a little hotter than that, which is what
-   the contract is for. Play badly and you still level, just slower.
-     level 1 at 135 XP, 2 at 342, 3 at 578, 5 at 1104, 10 at 2965, 15 at 5063
+   RE-FITTED FOR THE NINETY-SECOND COURSE. A shorter crossing is a smaller
+   course with proportionally fewer coins on it - a measured clean run banks
+   ~555 XP now (about 355 coins plus the 200 for beating CHUY) rather than
+   ~700 - so the base and the exponent both come down or run one would stop
+   handing out its three cards. At 125 / 1.25 a clean first run is still
+   exactly three level-ups (two on the road, the third off the CHUY bonus at
+   the line) and a session of six lands at thirteen cards, which is where the
+   longer course used to land. Take the paying contracts and it runs hotter,
+   which is what the contract is for. Play badly and you still level, slower.
+     level 1 at 125 XP, 2 at 297, 3 at 494, 5 at 935, 10 at 2223, 13 at 3111
    --------------------------------------------------------------------------- */
-var XP_BASE = 135, XP_POW = 1.34;
+var XP_BASE = 125, XP_POW = 1.25;
 function xpNeed(n) { return Math.round(XP_BASE * Math.pow(Math.max(1, n), XP_POW)); }
 
 var CARDS_KEY = 'rr_cards_v1';
@@ -13231,6 +13511,9 @@ function resetDeck() {
   DECK = { xp: 0, level: 0, deck: {} };
   ssDel(CARDS_KEY);
   LVL.pending = 0;
+  /* a wipe with a draft still open used to leave LVL.active set for ever, and
+     LVL.active is the hard freeze: the run would never tick again */
+  if (LVL.active) closeDraft();
   applyMods();
   renderDeckChips();
   updateXpHud();
@@ -13281,7 +13564,7 @@ function addXp(n) {
    setTimeout would hang the draft open forever; and a flourish measured in
    frames is a flourish that can be stepped through and asserted on. */
 var LVL = { active: false, pending: 0, offer: [], sel: 0,
-            closing: false, closeT: 0, draws: 0 };
+            closing: false, closeT: 0, draws: 0, fit: '', fitTrace: [] };
 var LVL_FLOURISH = 0.43;          // seconds the taken card holds before it closes
 
 /* three distinct cards, never one that is already at its cap */
@@ -13334,13 +13617,18 @@ function buildDraftCards() {
       iconInto(art, 96, drawCardIcon, C.id);
       b.appendChild(art);
 
+      /* title + effect in one wrapper: in the compact row layout they are the
+         block that sits BESIDE the icon rather than under it */
+      var tx = document.createElement('div');
+      tx.className = 'cText';
       var t = document.createElement('div');
       t.className = 'cTitle'; t.textContent = C.name;
-      b.appendChild(t);
+      tx.appendChild(t);
 
       var e = document.createElement('div');
       e.className = 'cEff'; e.textContent = C.eff(next);
-      b.appendChild(e);
+      tx.appendChild(e);
+      b.appendChild(tx);
 
       var pips = document.createElement('div');
       pips.className = 'cPips';
@@ -13402,6 +13690,12 @@ function openDraft() {
   lvlBurst();
   var scr = $('scrLevel');
   if (scr) scr.className = 'on';
+  /* whatever was on screen - the results card, the HUD, a toast - steps back
+     for the draft and comes straight back afterwards */
+  bodyClass('drafting', true);
+  /* the screen has to be DISPLAYED before it can be measured: a display:none
+     element has no scrollHeight and every card measures zero */
+  fitDraftCards();
   SFX.levelUp();
   updateTouchUI();
   try { window.setTimeout(updateScrollCues, 0); } catch (e) { }
@@ -13414,6 +13708,9 @@ function closeDraft() {
   LVL.closeT = 0;
   var scr = $('scrLevel');
   if (scr) scr.className = '';
+  var inner = $('lvlInner');
+  if (inner) inner.className = '';
+  bodyClass('drafting', false);
   var host = $('lvlBurst');
   if (host) host.innerHTML = '';
   updateTouchUI();
@@ -13460,6 +13757,7 @@ function pickCard(i) {
   updateXpHud();
   var sub = $('lvlSub');
   if (sub) sub.textContent = C.name + '  \u00b7  ' + C.eff(lv);
+  fitDraftCards();                 // the taken-card line is longer than 'ESCOGE UNA CARTA'
   LVL.closeT = LVL_FLOURISH;       // frame() counts it down and calls closeDraft
   return true;
 }
@@ -13531,7 +13829,9 @@ function updateXpHud() {
   if (lv && DECK.level !== XP_HUD.lvl) {
     var was = XP_HUD.lvl;
     XP_HUD.lvl = DECK.level;
-    lv.textContent = 'N' + DECK.level;
+    /* "N0" on a coin pill, in a Spanish game, in Arial Black, reads as the
+       word NO. Two characters instead of one, and it reads as a level. */
+    lv.textContent = 'Nv' + DECK.level;
     if (was >= 0) { lv.className = ''; void lv.offsetWidth; lv.className = 'up'; }
   }
   if (fill && pct !== XP_HUD.pct) { XP_HUD.pct = pct; fill.style.width = pct + '%'; }
@@ -13548,7 +13848,10 @@ function updateXpHud() {
    Entry: { n name (<=12 chars), s score, t time, g grade, c coins,
             d date yyyy-mm-dd, k how many cards the deck held }
    =========================================================================== */
-var SCORES_KEY = 'rr_scores', NAME_KEY = 'rr_lastname';
+/* see BEST_KEY: the scores of a two-minute course are not comparable with the
+   scores of a ninety-second one, so the table starts again and the old one is
+   left untouched under rr_scores */
+var SCORES_KEY = 'rr_scores_v9_90s', NAME_KEY = 'rr_lastname';
 var HI_MAX = 10, HI_SHOW = 5;
 var SCORES = [];
 /* the run that has just been played, spliced into the table so the player can
@@ -13741,6 +14044,55 @@ function fitScoreBlock(scrId, which) {
 function fitCards() {
   fitScoreBlock('scrResults', 'res');
   fitScoreBlock('scrTitle', 'title');
+  fitDraftCards();
+}
+/* ---------------------------------------------------------------------------
+   AND THE DRAFT HAS TO FIT TOO.
+   Same idea as fitScoreBlock, different elastic thing: there is no table to
+   shrink here, so what gives is the CARD - two steps of padding / type / icon,
+   then a compact one-line-per-card row, then a tighter row.
+
+   MEASURED IN LAYOUT BOXES, NEVER IN CLIENT RECTS. All three cards are
+   mid-animation when this runs (cardDeal has a translate + rotateY + scale on
+   them for the best part of a second), and getBoundingClientRect reports the
+   TRANSFORMED box - so a rect-based fit would be fitting the animation rather
+   than the layout and would pick a different rung every frame. offsetTop /
+   offsetHeight / scrollHeight are all transform-free.
+
+   Two tests, both of which have to pass: the screen must not overflow at all,
+   and the bottom of the LAST card - its pick number included - must be inside
+   the window. The second is not implied by the first while #lvlInner is
+   centred by margin:auto.
+   --------------------------------------------------------------------------- */
+var LVL_FIT_STEPS = ['', 'fs1', 'fs2', 'row', 'row rw1'];
+function draftBottom(scr, el) {
+  var b = 0, n = el, guard = 0;
+  while (n && n !== scr && guard++ < 12) { b += n.offsetTop; n = n.offsetParent; }
+  return b + el.offsetHeight;
+}
+function fitDraftCards() {
+  var scr = $('scrLevel'), inner = $('lvlInner'), host = $('lvlCards');
+  if (!scr || !inner || !host || !LVL.active) return;
+  LVL.fitTrace = [];
+  var H = 0;
+  try { H = scr.clientHeight || window.innerHeight || 1; } catch (eH) { H = 1; }
+  for (var i = 0; i < LVL_FIT_STEPS.length; i++) {
+    inner.className = LVL_FIT_STEPS[i];
+    var over = 0, worst = 0;
+    try {
+      over = scr.scrollHeight - scr.clientHeight;
+      for (var k = 0; k < host.children.length; k++) {
+        var b = draftBottom(scr, host.children[k]);
+        if (b > worst) worst = b;
+      }
+    } catch (e) { over = 0; worst = 0; }
+    LVL.fit = LVL_FIT_STEPS[i] || 'full';
+    LVL.fitTrace.push([LVL.fit, over, Math.round(worst), H]);
+    if (over <= 2 && worst <= H - 2) return;
+  }
+  /* nothing fitted even at the tightest rung - which needs a window under
+     ~190 px tall. Keep the tightest one and let the chevron say it scrolls. */
+  inner.className = LVL_FIT_STEPS[LVL_FIT_STEPS.length - 1];
 }
 /* called from showResults: build the run's row, offer the name box if it
    would land in the ten, and draw both tables with it already in place */
@@ -14462,7 +14814,20 @@ var GAME = {
   jumpFlags: [false, false, false],
   finPhase: 0, finT: 0, stopT: 0, camPush: 0, camPushT: 0, rageCam: 0, secondRage: false, quip: '',
 };
-var BEST_KEY = 'rescoRunBest_pickups_v3';
+/* ---------------------------------------------------------------------------
+   THE COURSE GOT SHORTER, SO THE RECORDED NUMBERS MOVED.
+   A clean run used to take 2:05 and score about 230,000; on the ninety-second
+   course the same driving takes 1:31 and scores about 174,000, because both
+   the time bonus (TIME_PAR scales with COURSE_SCALE) and the coin count scale
+   with the length of the crossing. A table of ten unreachable rows and a best
+   time nobody can miss are both worse than a clean sheet, so the new course
+   gets its own keys.
+
+   NOTHING IS DELETED. The two-minute course's numbers stay exactly where they
+   are, under 'rescoRunBest_pickups_v3' and 'rr_scores', so a build that wanted
+   them back would only have to read those keys again.
+   --------------------------------------------------------------------------- */
+var BEST_KEY = 'rr_best_v9_90s';
 
 /* Every state transition is recorded with a stack slice. A "the game just
    went back to the title" report is then one __RR.stateLog away from an
@@ -14776,6 +15141,7 @@ function resetRun(newSeed) {
 
   // wipe the transient UI state too, or a stale callout/toast survives a restart
   clearNotes();
+  showSkipHint(false);
   stopScoreAnim();                // a half-counted score never survives a restart
   var _pw = $('progWrap'); if (_pw) _pw.className = '';
   var _rc = $('resConfetti'); if (_rc) _rc.innerHTML = '';
@@ -15003,6 +15369,7 @@ function spawnResConfetti() {
 
 
 function showResults() {
+  showSkipHint(false);
   GAME.resultsShown = true;
   var best = loadBest();
   var isNew = !isFinite(best) || GAME.finishTime < best;
@@ -16119,8 +16486,24 @@ function stepFinished(dt) {
   updatePickups(dt);
   updateWarns();
 
+  /* ---- the skip line. customsSkip() opens two seconds after the van stops;
+     this is the only thing that ever told the player so. */
+  showSkipHint(GAME.finPhase >= 1 && !GAME.resultsShown && !GAME.airborne &&
+               GAME.sinceFinish - GAME.stopT >= 2.0);
+
   // last-resort: the overlay must always appear
   if (!GAME.resultsShown && GAME.sinceFinish > 26) showResults();
+}
+var SKIP_HINT = false;
+function showSkipHint(on) {
+  on = !!on;
+  if (on === SKIP_HINT) return;
+  SKIP_HINT = on;
+  var el = $('skipHint');
+  if (!el) return;
+  if (on) el.textContent = IS_TOUCH ? 'TOCA PARA CONTINUAR'
+                                    : 'CUALQUIER TECLA PARA CONTINUAR';
+  el.className = on ? 'on' : '';
 }
 
 /* ---------------- van visual state ---------------- */
@@ -17280,6 +17663,15 @@ function boot() {
           hit: live ? polHits(MOMENT.policeD, MOMENT.policeX) : false,
           berth: +policeBerth().toFixed(2), standoff: +policeStandoff().toFixed(1),
           hitX: POL_HIT_X, hitD: POL_HIT_D,
+          /* the steering state, so a harness can assert the commitment and the
+             lane-change rate rather than just counting fines */
+          dir: MOMENT.policeDir, slideT: +(MOMENT.policeSlideT || 0).toFixed(3),
+          hold: +(MOMENT.policeHold || 0).toFixed(2),
+          turnT: +(MOMENT.policeTurnT || 0).toFixed(2),
+          yield: +(MOMENT.policeYield || 0).toFixed(2),
+          clear: !!MOMENT.policeClear,
+          commit: POL_COMMIT, slide: POL_SLIDE, turnGap: POL_TURN_GAP,
+          maxLatRate: +(1.5 * CFG.LANE_W / POL_SLIDE).toFixed(2),
           swerves: GHOST_AUDIT.policeSwerves, brakes: GHOST_AUDIT.policeBrakes,
           overlaps: GHOST_AUDIT.policeOverlaps
         };
@@ -17304,6 +17696,14 @@ function boot() {
       },
       /* test hooks: hand the player a charge, and fire it */
       giveNitro: function () { GAME.nitro = 1; updateNitroUI(); return true; },
+      /* start a patrol encounter right here, so its lateral behaviour can be
+         logged frame by frame without waiting for the scripted one */
+      patrolNow: function () {
+        if (GAME.state !== 'PLAYING') return false;
+        MOMENT.fired.police++;
+        startPolice();
+        return MOMENT.police >= 0;
+      },
       superboost: function () {
         if (!GAME.nitro) { GAME.nitro = 1; updateNitroUI(); }
         boostOrHonk();
@@ -17350,11 +17750,24 @@ function boot() {
       resetDeck: function () { return resetDeck(); },
       get draftOpen() { return LVL.active; },
       get draft() {
+        var scr = $('scrLevel'), host = $('lvlCards'), bots = [];
+        if (scr && host) {
+          for (var i = 0; i < host.children.length; i++) {
+            var r = null;
+            try { r = host.children[i].getBoundingClientRect(); } catch (e) { r = null; }
+            bots.push(r ? Math.round(r.bottom) : null);
+          }
+        }
         return { active: LVL.active, closing: LVL.closing,
                  closeT: +LVL.closeT.toFixed(3), pending: LVL.pending,
                  sel: LVL.sel, draws: LVL.draws,
+                 fit: LVL.fit, fitTrace: (LVL.fitTrace || []).slice(),
+                 /* what the FITTER promises, in the units a test can check */
+                 cardBottoms: bots, winH: window.innerHeight,
+                 over: scr ? (scr.scrollHeight - scr.clientHeight) : 0,
                  offer: LVL.offer.map(function (c) { return c.id; }) };
       },
+      fitDraft: function () { fitDraftCards(); return LVL.fit; },
       get scores() { return SCORES.slice(); },
       get scoreEntry() { return HI.entry ? { n: HI.entry.n, s: HI.entry.s, saved: HI.saved } : null; },
       get scoreFit() { return { res: HI.resFit, title: HI.titleFit,
