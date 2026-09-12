@@ -324,6 +324,17 @@ canvas{display:block}
   background-position:calc(50% - 4px) calc(50% - 2px),calc(50% + 4px) calc(50% - 2px);
   background-repeat:no-repeat;}
 .screen.hasMore:after{opacity:1;animation:cueBob 1.1s ease-in-out infinite}
+/* the draft gets the same "there is more below" chevron */
+#scrLevel:after{content:"";position:fixed;left:50%;bottom:10px;width:34px;height:34px;
+  margin-left:-17px;border-radius:50%;pointer-events:none;opacity:0;
+  transition:opacity .18s linear;
+  background:rgba(20,24,31,.82);border:3px solid rgba(255,246,232,.85);
+  background-image:linear-gradient(45deg,rgba(0,0,0,0) 46%,#FFF6E8 46% 54%,rgba(0,0,0,0) 54%),
+                   linear-gradient(-45deg,rgba(0,0,0,0) 46%,#FFF6E8 46% 54%,rgba(0,0,0,0) 54%);
+  background-size:13px 13px,13px 13px;
+  background-position:calc(50% - 4px) calc(50% - 2px),calc(50% + 4px) calc(50% - 2px);
+  background-repeat:no-repeat;}
+#scrLevel.hasMore:after{opacity:1;animation:cueBob 1.1s ease-in-out infinite}
 @keyframes cueBob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 
 #logoRow{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:2px}
@@ -410,10 +421,6 @@ canvas{display:block}
 }
 #scrResults .card{position:relative}
 #scrResults .card > *:not(#resConfetti){position:relative;z-index:1}
-/* what the wallet is one run away from buying */
-#nextUpg{margin-top:6px;font-size:min(4.2vw,16px);color:#6B5A44}
-#nextUpg b{color:var(--orange-d)}
-#nextUpg.can b{color:#0E7A3C}
 .coinRow b{color:var(--gold-d)}
 .nearRow b{color:var(--boost-d)}
 
@@ -684,82 +691,205 @@ body.touch #boostBox{display:none}
 #tHonk:disabled .fire{display:none}
 
 /* ============================================================
-   PASS 6 - TALLER RESCO (the garage shop), CARGO CONTRACTS,
-   the combo meter, the weather overlays.
-   Same cartoon language as the rest of the UI: thick ink borders,
-   orange / blue / cream, hard drop shadows, no gradients softer
-   than the panels already use.
+   PASS 8 - THE CARD DRAFT, THE XP BAR, THE HIGH-SCORE TABLES.
+   The TALLER RESCO garage (a permanent, purchased upgrade tree paid
+   for out of a persistent wallet) is gone. Coins are EXPERIENCE now:
+   crossing a level threshold mid-run freezes the game and deals
+   three cards face up. Same cartoon language as the rest of the UI:
+   thick ink borders, cream faces, hard drop shadows - plus one
+   coloured header band per category, which is the whole legend.
    ============================================================ */
 
-/* ---------- the coin wallet, on the title and results cards ---------- */
-.wallet{
-  display:inline-flex;align-items:center;gap:9px;
-  margin:8px auto 0;padding:6px 14px 7px 8px;border-radius:13px;
-  background:var(--ink);border:4px solid var(--ink);
-  box-shadow:0 4px 0 rgba(20,24,31,.45);
-  color:#FFD75E;font-size:min(4.4vw,18px);letter-spacing:1px;line-height:1;
+/* ---------- the deck, as chips (title card + pause card) ---------- */
+.deckRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px auto 0;max-width:min(100%,560px)}
+.deckRow:empty{display:none}
+.dchip{
+  display:flex;align-items:center;gap:4px;
+  padding:3px 7px 3px 3px;border-radius:9px;
+  background:#FFFDF6;border:3px solid var(--ink);
+  box-shadow:0 3px 0 rgba(20,24,31,.45);
+  color:var(--ink);font-size:12px;line-height:1;
 }
-.wallet .coinIcon{width:22px;height:22px}
-.wallet .coinIcon:after{font-size:12px}
-.wallet b{color:#fff}
+.dchip .dIco{width:22px;height:22px;flex:none;border-radius:5px;overflow:hidden;background:#fff}
+.dchip .dIco canvas{width:100%;height:100%;display:block}
+.dchip b{font-size:13px}
+.dchip.cat-speed,.dchip.cat-boost{background:#F1FBF3}
+.dchip.cat-protection{background:#F2F7FF}
+.dchip.cat-economy{background:#FFF8E6}
+.dchip.cat-nitro{background:#FFF0EC}
+.dchip.cat-utility{background:#F4F4F2}
+#deckEmpty{margin-top:8px;font-size:min(3.6vw,13px);color:#7A6A55;letter-spacing:.5px}
 
-/* ---------- the shop ---------- */
-#scrShop .card{max-width:min(96vw,940px);padding:14px 16px 18px}
-#shopHead{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-#shopWrench{width:46px;height:46px;flex:none}
-#shopWrench canvas{width:100%;height:100%;display:block}
-#shopGrid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(162px,1fr));
-  gap:8px;margin:10px 0 4px;text-align:left;
-}
-.upg{
-  background:#FFFDF6;border:5px solid var(--ink);border-radius:14px;
-  box-shadow:0 5px 0 rgba(20,24,31,.5);
-  padding:9px 10px 10px;display:flex;flex-direction:column;gap:5px;
-  color:var(--ink);
-}
-.upg.cosm{background:#F2F7FF}
-.upg.maxed{background:#E8F7EC}
-.upg .uHead{display:flex;align-items:center;gap:8px}
-.upg .uIco{width:38px;height:38px;flex:none;border:3px solid var(--ink);border-radius:9px;background:#fff;overflow:hidden}
-.upg .uIco canvas{width:100%;height:100%;display:block}
-.upg .uName{font-size:14px;letter-spacing:.5px;line-height:1.05;flex:1}
-.upg .uDesc{font-family:system-ui,sans-serif;font-weight:700;font-size:11px;line-height:1.25;color:#5C5140;min-height:26px}
-/* what the next level actually buys, beside what you have now */
-.upg .uNext{font-family:system-ui,sans-serif;font-weight:700;font-size:11px;line-height:1.2;color:#3A4B2E}
-.upg .uNext b{color:var(--boost-d)}
-.upg .uNext .now{color:#8A8070}
-.upg .uPips{display:flex;gap:4px;align-items:center}
-.pip{width:13px;height:13px;border:3px solid var(--ink);border-radius:4px;background:#D8D2C4}
-.pip.on{background:var(--orange)}
-.upg.cosm .pip.on{background:var(--blue)}
-/* flex-wrap + min-width:0, or the COMPRAR button sticks out through the side
-   of its own card the moment the column is narrower than cost + button */
-.upg .uFoot{display:flex;align-items:center;justify-content:space-between;gap:6px;
-  margin-top:2px;flex-wrap:wrap;min-width:0}
-.upg .uCost{display:flex;align-items:center;gap:5px;font-size:15px;color:var(--gold-d);
-  min-width:0;flex:0 0 auto}
-.upg .uCost .coinIcon{width:18px;height:18px;border-width:2px}
-.upg .uCost .coinIcon:after{font-size:10px}
-.uBuy{
-  pointer-events:auto;cursor:pointer;font-family:inherit;letter-spacing:1px;
-  background:var(--orange);color:#fff;border:4px solid var(--ink);border-radius:10px;
-  padding:7px 10px;min-height:38px;font-size:14px;min-width:0;flex:1 1 auto;
-  box-shadow:0 4px 0 rgba(20,24,31,.55);
-  text-shadow:-1px -1px 0 #14181F,1px -1px 0 #14181F,-1px 1px 0 #14181F,1px 1px 0 #14181F;
-  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
-}
-.uBuy:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(20,24,31,.55)}
-.uBuy.no{background:#A9A296;box-shadow:0 4px 0 rgba(20,24,31,.35);cursor:default}
-.uBuy.done{background:var(--boost-d)}
-.upg.bought{animation:upgPop .42s cubic-bezier(.2,1.7,.4,1)}
-@keyframes upgPop{from{transform:scale(1.10) rotate(-1.5deg)}to{transform:scale(1)}}
-#shopStat{margin-top:6px;font-size:min(4.2vw,17px);color:var(--boost-d);min-height:22px}
-#shopReset{
-  display:inline-block;margin-top:12px;cursor:pointer;pointer-events:auto;
+/* ---------- NUEVA PARTIDA: the one way to wipe the session deck ---------- */
+#btnNewGame{
+  display:inline-block;margin-top:10px;cursor:pointer;pointer-events:auto;
   background:none;border:0;font-family:inherit;letter-spacing:1px;
   font-size:12px;color:#9C6A5A;text-decoration:underline;padding:6px 10px;
 }
+
+/* ---------- THE LEVEL-UP DRAFT -------------------------------------------
+   Its own layer, over the HUD and over any card that happens to be open,
+   because it can be dealt mid-run (the sim is hard-frozen behind it) or on
+   top of the results card when an end-of-run bonus tips the bar over. */
+#scrLevel{
+  position:fixed;inset:0;z-index:40;display:none;
+  align-items:center;justify-content:center;padding:10px;
+  background:radial-gradient(ellipse at 50% 45%,rgba(12,16,26,.62),rgba(6,8,14,.90));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+}
+#scrLevel.on{display:flex;animation:lvlIn .22s ease-out}
+@keyframes lvlIn{from{opacity:0}to{opacity:1}}
+#lvlInner{margin:auto;text-align:center;width:100%;max-width:min(96vw,860px);position:relative}
+#lvlBanner{
+  font-size:min(10vw,56px);line-height:1;letter-spacing:2px;color:#fff;
+  -webkit-text-stroke:0.05em #14181F;paint-order:stroke fill;
+  text-shadow:0 0.09em 0 var(--gold-d), 0 0.11em 0 rgba(20,24,31,.6);
+  animation:lvlSlam .55s cubic-bezier(.16,1.7,.36,1);
+}
+#lvlBanner b{color:#FFD75E}
+@keyframes lvlSlam{
+  0%{transform:scale(2.2) rotate(-9deg);opacity:0}
+  45%{transform:scale(.92) rotate(3deg);opacity:1}
+  100%{transform:scale(1) rotate(0)}
+}
+#lvlSub{margin-top:4px;font-size:min(4.4vw,18px);letter-spacing:2px;color:#FFD9A8}
+#lvlCards{display:flex;gap:10px;justify-content:center;margin:12px 0 0;flex-wrap:wrap;perspective:1100px}
+.card3{
+  pointer-events:auto;cursor:pointer;font-family:inherit;text-align:left;
+  flex:1 1 200px;max-width:250px;min-width:150px;
+  background:#FFFDF6;border:5px solid var(--ink);border-radius:16px;
+  box-shadow:0 7px 0 rgba(20,24,31,.6);
+  padding:0 0 10px;color:var(--ink);overflow:hidden;
+  display:flex;flex-direction:column;gap:6px;
+  transform-origin:50% 100%;opacity:0;
+  animation:cardDeal .52s cubic-bezier(.18,1.5,.34,1) forwards;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+/* the three cards fly in and flip, one after the other */
+.card3:nth-child(1){animation-delay:.05s}
+.card3:nth-child(2){animation-delay:.15s}
+.card3:nth-child(3){animation-delay:.25s}
+@keyframes cardDeal{
+  0%{opacity:0;transform:translateY(56px) rotateY(90deg) scale(.82)}
+  55%{opacity:1;transform:translateY(-8px) rotateY(-12deg) scale(1.04)}
+  100%{opacity:1;transform:translateY(0) rotateY(0) scale(1)}
+}
+.card3:active{transform:translateY(4px);box-shadow:0 3px 0 rgba(20,24,31,.6)}
+.card3.sel{
+  outline:5px solid #FFD75E;outline-offset:2px;
+  box-shadow:0 7px 0 rgba(20,24,31,.6),0 0 26px rgba(255,215,94,.65);
+}
+.card3.taken{animation:cardTake .42s cubic-bezier(.2,1.7,.4,1) forwards}
+@keyframes cardTake{
+  0%{transform:scale(1)}45%{transform:scale(1.12) rotate(-2deg)}100%{transform:scale(1.04)}
+}
+.card3.drop{animation:cardDrop .30s ease-in forwards}
+@keyframes cardDrop{to{opacity:0;transform:translateY(26px) scale(.86)}}
+.card3 .cBand{
+  padding:6px 10px 7px;font-size:12px;letter-spacing:2px;color:#fff;
+  border-bottom:4px solid var(--ink);
+  text-shadow:-1px -1px 0 rgba(20,24,31,.8),1px 1px 0 rgba(20,24,31,.8);
+}
+/* the colour language, unchanged: green = speed / boost, blue = protection,
+   gold = economy, red = nitro, grey = utility */
+.card3.cat-speed .cBand,.card3.cat-boost .cBand{background:var(--boost-d)}
+.card3.cat-protection .cBand{background:var(--blue)}
+.card3.cat-economy .cBand{background:var(--gold-d)}
+.card3.cat-nitro .cBand{background:#B32316}
+.card3.cat-utility .cBand{background:#6E747E}
+.card3 .cArt{
+  width:74px;height:74px;margin:6px auto 0;flex:none;
+  border:4px solid var(--ink);border-radius:12px;background:#fff;overflow:hidden;
+  box-shadow:0 4px 0 rgba(20,24,31,.35);
+}
+.card3 .cArt canvas{width:100%;height:100%;display:block}
+.card3 .cTitle{font-size:15px;letter-spacing:.5px;line-height:1.05;text-align:center;padding:0 9px}
+.card3 .cEff{font-family:system-ui,sans-serif;font-weight:700;font-size:12px;line-height:1.3;
+  color:#5C5140;text-align:center;padding:0 10px;flex:1}
+.card3 .cPips{display:flex;gap:4px;justify-content:center;align-items:center;padding-bottom:2px}
+.cpip{width:11px;height:11px;border:3px solid var(--ink);border-radius:4px;background:#D8D2C4}
+.cpip.on{background:var(--orange)}
+.card3 .cKey{
+  margin:0 auto;width:22px;height:22px;border-radius:6px;
+  background:var(--ink);color:#fff;font-size:12px;line-height:22px;text-align:center;
+}
+#lvlHint{margin-top:11px;font-size:min(3.6vw,14px);letter-spacing:1px;color:#B8AE9C}
+#lvlHint .kcap{background:rgba(255,246,232,.16);color:#FFD9A8}
+/* the gold burst behind the deal - 24 CSS chips, gone in a second and a half */
+#lvlBurst{position:absolute;inset:-40% -10%;overflow:hidden;pointer-events:none;z-index:-1}
+#lvlBurst i{position:absolute;left:50%;top:46%;width:9px;height:9px;border-radius:2px;opacity:0;
+  animation:lvlSpark 1.5s ease-out forwards}
+@keyframes lvlSpark{
+  0%{opacity:1;transform:translate(0,0) scale(1) rotate(0)}
+  100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3) rotate(540deg)}
+}
+
+/* ---------- MEJORES PUNTAJES ---------- */
+.hiWrap{margin:9px auto 0;max-width:min(100%,520px)}
+.hiHead{font-size:min(4.2vw,15px);letter-spacing:2px;color:var(--blue-d)}
+.hiTable{width:100%;border-collapse:collapse;margin-top:4px;color:var(--ink);table-layout:fixed}
+.hiTable tr{border-bottom:2px dotted rgba(20,24,31,.30)}
+.hiTable td{padding:2px 3px;font-size:13px;line-height:1.15;text-align:left}
+.hiTable td.p{width:1.9em;color:#8A8070}
+.hiTable td.s{text-align:right;width:5.2em;font-size:14px;color:var(--orange-d);white-space:nowrap}
+.hiTable td.t{text-align:right;width:4.4em;color:#7A6A55;font-family:system-ui,sans-serif;font-weight:700;font-size:11px}
+.hiTable td.n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hiTable tr.me{background:rgba(255,195,0,.30)}
+.hiTable tr.me td.s{color:#0E7A3C}
+.hiEmpty{font-family:system-ui,sans-serif;font-weight:700;font-size:12px;color:#7A6A55;margin-top:4px}
+/* what the table collapses to when the window is too short for a table at
+   all: one line saying where this run landed. The VER LOS 10 link is still
+   right underneath it, so the full ten are never more than a tap away. */
+#hiRank{display:none;font-size:min(4.0vw,15px);letter-spacing:.5px;color:var(--ink)}
+#hiRank.on{display:block}
+#hiRank b{color:var(--orange-d)}
+#hiRank .pl{color:#8A8070}
+.hiMore{
+  margin-top:5px;cursor:pointer;pointer-events:auto;background:none;border:0;
+  font-family:inherit;letter-spacing:1px;font-size:11px;color:#6B7BA8;
+  text-decoration:underline;padding:4px 8px;
+}
+
+/* ---------- the name row on the results card ----------------------------
+   ABOVE the buttons, and 16px on the input so iOS never zooms the page when
+   it is focused. It is never auto-focused: on a phone that throws the
+   keyboard over OTRA VUELTA. */
+#nameRow{display:none;align-items:center;justify-content:center;gap:8px;
+  margin:8px auto 0;flex-wrap:wrap}
+#nameRow.on{display:flex}
+#nameRow .nLbl{font-size:min(4.0vw,15px);letter-spacing:1.5px;color:var(--boost-d)}
+#hiName{
+  font-family:inherit;font-size:16px;line-height:1;letter-spacing:1px;
+  width:min(46vw,190px);padding:9px 10px;color:var(--ink);
+  background:#FFFDF6;border:4px solid var(--ink);border-radius:10px;
+  box-shadow:0 3px 0 rgba(20,24,31,.4);text-transform:uppercase;
+  -webkit-appearance:none;appearance:none;
+}
+#hiName:focus{outline:3px solid var(--orange);outline-offset:1px}
+#hiSave{
+  pointer-events:auto;cursor:pointer;font-family:inherit;letter-spacing:1px;
+  background:var(--boost-d);color:#fff;border:4px solid var(--ink);border-radius:10px;
+  padding:8px 14px;min-height:40px;font-size:14px;
+  box-shadow:0 4px 0 rgba(20,24,31,.55);
+  text-shadow:-1px -1px 0 #14181F,1px 1px 0 #14181F;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#hiSave:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(20,24,31,.55)}
+#hiSave.done{background:#8A8070}
+
+/* ---------- the XP bar, folded into the coin pill ---------- */
+#xpCell{display:flex;flex-direction:column;align-items:flex-start;gap:3px;align-self:center}
+#xpTrack{width:max(54px, calc(48px / var(--hs)));height:max(6px, calc(5px / var(--hs)));
+  border-radius:4px;background:#2B3140;box-shadow:0 0 0 2px rgba(20,24,31,.9);overflow:hidden}
+#xpFill{height:100%;width:0%;background:linear-gradient(90deg,var(--gold-d),#FFE277);transition:width .18s linear}
+#xpLvl{
+  align-self:center;flex:none;padding:3px 7px 4px;border-radius:8px;
+  background:linear-gradient(180deg,#8CF7B4,var(--boost));
+  border:3px solid var(--ink);color:#08320F;
+  font-size:max(13px, calc(10.5px / var(--hs)));line-height:1;letter-spacing:.5px;
+  box-shadow:0 2px 0 rgba(0,0,0,.45);
+}
+#xpLvl.up{animation:multPop .34s cubic-bezier(.2,1.7,.4,1)}
 
 /* ---------- the contract picker ---------- */
 #scrContracts .card{max-width:min(96vw,880px);padding:18px 18px 22px}
@@ -829,7 +959,6 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
 #scrPause .bigTitle{font-size:min(11vw,68px)}
 #scrResults .bigTitle{font-size:min(8.6vw,54px)}
 #scrContracts .bigTitle{font-size:min(9vw,58px)}
-#scrShop .bigTitle{font-size:min(9vw,58px)}
 #scrResults .sub{margin-top:8px}
 
 /* ---------- SINGLE-COLUMN RESULTS, on a narrow screen ---------- */
@@ -839,6 +968,32 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   .rrow.hi{font-size:16px}
   .rrow.hi b{font-size:25px}
   #bestLine{font-size:15px}
+}
+
+/* ---------- A 720 PX WINDOW IS THE COMMON DESKTOP ONE --------------------
+   The results card grew a name row and a score table this pass, and at
+   1280x720 that pushed the two buttons under the fold. This tier is the
+   middle setting between the full-size card and the landscape-phone one: it
+   takes about eighty pixels out of the RESULTS card only, which is what buys
+   the score table its rows back (fitScoreBlock measures and decides how
+   many). Nothing else on any other card moves. */
+@media (max-height:860px){
+  #scrResults .card{padding:14px 18px 16px}
+  #scrResults .bigTitle{font-size:min(7vw,42px)}
+  #resQuip{display:none}
+  #gradeWrap{margin:3px auto 0;gap:11px}
+  #gradeBadge{width:46px;height:46px;font-size:27px;border-width:5px}
+  #gradeText{font-size:min(3.7vw,14px);max-width:270px}
+  #scrResults .rrow{font-size:13px;padding:1px 2px}
+  #scrResults .rrow b{font-size:15px}
+  #scrResults .rrow.hi{font-size:16px;margin-top:3px;padding-top:4px}
+  #scrResults .rrow.hi b{font-size:25px}
+  #bestLine{font-size:15px;margin-top:5px}
+  #conOutcome{margin-top:3px}
+  #xpLine{margin-top:4px;font-size:min(4.0vw,16px)}
+  .hiWrap{margin-top:5px}
+  #nameRow{margin-top:5px}
+  #scrResults .btnRow{margin-top:8px}
 }
 
 /* ---------- A LANDSCAPE PHONE IS 390 PX TALL ----------------------------
@@ -852,7 +1007,6 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   #scrPause .bigTitle{font-size:min(8vw,44px)}
   #scrResults .bigTitle{font-size:min(7vw,34px)}
   #scrContracts .bigTitle{font-size:min(7.4vw,38px)}
-  #scrShop .bigTitle{font-size:min(7.4vw,38px)}
   .sub{font-size:12px;margin-top:5px}
   #scrResults .sub{margin-top:4px}
   .tricolor{height:4px;margin:5px auto 0}
@@ -861,7 +1015,6 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   .keys{margin-top:7px;gap:5px 7px}
   .key{font-size:11px;padding:4px 8px}
   .kcap{font-size:10px;padding:2px 5px}
-  .wallet{margin:6px auto 0;font-size:14px}
   #logoEmblem{width:44px;height:44px}
   #runLine{margin-top:4px}
   #bestTitle{margin-top:4px;font-size:12px}
@@ -892,19 +1045,37 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   .con .cName{font-size:13px}
   .con .cDesc{font-size:11px;line-height:1.22}
   .con .cRew{font-size:11px;padding:3px 7px 4px}
-  #shopGrid{gap:6px;margin:7px 0 3px;grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
-  .upg{padding:6px 8px 7px;gap:3px}
-  .upg .uIco{width:28px;height:28px}
-  .upg .uName{font-size:12px}
-  .upg .uDesc{font-size:10px;min-height:0}
-  .upg .uNext{font-size:10px}
-  .uBuy{min-height:30px;font-size:12px;padding:5px 9px}
-  .upg .uCost{font-size:13px}
-  .pip{width:10px;height:10px;border-width:2px}
-  #shopStat{font-size:12px;min-height:0}
-  #shopReset{margin-top:7px;font-size:11px}
+  #btnNewGame{margin-top:7px;font-size:11px}
   .hint{margin-top:6px;font-size:11px}
   .musBtn{font-size:11px}
+  /* ---- the draft, on a 390 px tall landscape phone ---- */
+  #lvlBanner{font-size:min(8vw,38px)}
+  #lvlSub{font-size:min(3.6vw,13px);margin-top:2px;letter-spacing:1px}
+  #lvlCards{gap:7px;margin-top:7px}
+  .card3{flex:1 1 150px;max-width:200px;min-width:132px;border-width:4px;gap:3px;padding-bottom:6px}
+  .card3 .cBand{font-size:10px;padding:4px 8px 5px;letter-spacing:1.2px;border-bottom-width:3px}
+  .card3 .cArt{width:46px;height:46px;border-width:3px;margin-top:4px}
+  .card3 .cTitle{font-size:12px}
+  .card3 .cEff{font-size:10px;line-height:1.22}
+  .cpip{width:9px;height:9px;border-width:2px}
+  #lvlHint{margin-top:6px;font-size:11px}
+  /* ---- the deck chips and the score tables ---- */
+  .deckRow{gap:4px;margin-top:5px}
+  .dchip{font-size:10px;padding:2px 5px 2px 2px;border-width:2px}
+  .dchip .dIco{width:17px;height:17px}
+  .dchip b{font-size:11px}
+  #deckEmpty{margin-top:5px;font-size:11px}
+  .hiWrap{margin-top:5px}
+  .hiHead{font-size:12px;letter-spacing:1px}
+  .hiTable td{font-size:11px;padding:1px 3px}
+  .hiTable td.s{font-size:12px}
+  .hiTable td.t{font-size:10px}
+  .hiMore{font-size:10px;margin-top:2px;padding:2px 6px}
+  #nameRow{gap:6px;margin-top:5px}
+  #nameRow .nLbl{font-size:12px;letter-spacing:1px}
+  #hiName{font-size:16px;padding:6px 8px;width:min(40vw,150px);border-width:3px}
+  #hiSave{min-height:32px;font-size:12px;padding:6px 10px;border-width:3px}
+  #xpLine{font-size:13px;margin-top:4px}
 }
 
 /* ---------- 390 PX TALL: the two buttons still have to be on screen ----------
@@ -919,20 +1090,68 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   #gradeText{font-size:11px;max-width:320px}
   #scrResults .sub{margin-top:2px;font-size:11px}
   .tricolor{margin:4px auto 0}
-  #conOutcome{margin-top:1px}
-  #bankLine{margin-top:2px}
-  #nextUpg{margin-top:2px}
+  /* ONE LINE EACH. Both of these wrap to two lines on a 390 px tall window,
+     which is forty pixels the two buttons need more than they do. */
+  #conOutcome{margin-top:1px;font-size:11px;line-height:1.15;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #xpLine{margin-top:2px;font-size:11px;line-height:1.15;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #scrResults .bigTitle{font-size:min(5.2vw,24px)}
+  #scrResults .sub{font-size:10px}
+  #scrResults .tricolor{height:3px;margin:2px auto 0}
+  #scrResults .btn.big{font-size:16px;padding:7px 18px;min-height:38px;min-width:140px}
+  /* the last twenty pixels, so the score block still gets its one line */
+  #gradeBadge{width:28px;height:28px;font-size:17px;border-width:3px;
+    box-shadow:0 3px 0 rgba(20,24,31,.5)}
+  #gradeWrap{gap:8px}
+  #gradeText{font-size:10px}
+  /* SPECIFICITY. The 860 px tier above scopes its results rules with
+     #scrResults, so the same rules here have to be scoped too or the taller
+     tier wins on a shorter window - which is precisely backwards. */
+  #scrResults .card{padding:8px 12px 10px}
+  #scrResults .rrow{font-size:11px;padding:0 2px;border-bottom-width:2px}
+  #scrResults .rrow b{font-size:13px}
+  #scrResults .rrow.hi{font-size:13px;margin-top:2px;padding-top:2px;border-top-width:2px}
+  #scrResults .rrow.hi b{font-size:20px}
+  #scrResults .btnRow{margin-top:3px}
+  #nameRow{margin-top:3px;gap:5px}
+  #nameRow .nLbl{font-size:10px;letter-spacing:.5px}
+  #hiName{font-size:16px;padding:4px 7px;width:min(30vw,132px);min-height:28px;border-width:3px}
+  #hiSave{min-height:28px;font-size:11px;padding:4px 9px;border-width:3px}
+  .hiWrap{margin-top:3px}
+  .hiHead{font-size:11px}
+  .hiTable td{font-size:10px;padding:0 3px}
+  .hiTable td.s{font-size:11px}
+  #hiRank{font-size:11px}
+  .rrow{font-size:11px}
+  .rrow b{font-size:13px}
   .btnRow{margin-top:5px}
 }
+/* ---------- THE DRAFT ON A 390 PX TALL PHONE ----------------------------
+   The 560 tier gets the three cards on screen; this one finds the last forty
+   pixels so the "1 2 3 / arrows + space" hint under them is on screen too. */
+@media (max-height:470px){
+  #scrLevel{padding:6px}
+  #lvlBanner{font-size:min(6vw,28px)}
+  #lvlSub{font-size:10px;margin-top:1px;letter-spacing:.5px}
+  #lvlCards{margin-top:5px;gap:6px}
+  .card3{gap:2px;padding-bottom:5px}
+  .card3 .cArt{width:38px;height:38px;margin-top:3px;border-width:3px}
+  .card3 .cBand{font-size:9px;padding:3px 6px 4px;letter-spacing:1px}
+  .card3 .cTitle{font-size:11px;padding:0 6px}
+  .card3 .cEff{font-size:9px;line-height:1.2;padding:0 7px}
+  .card3 .cKey{width:18px;height:18px;line-height:18px;font-size:10px}
+  .cpip{width:8px;height:8px;border-width:2px}
+  #lvlHint{margin-top:4px;font-size:10px}
+}
+
 @media (max-height:470px) and (min-width:620px){
   #resList{grid-template-columns:repeat(3,1fr);gap:0 14px;max-width:100%}
 }
 
-/* the TALLER button belongs beside OTRA VUELTA */
-.btn.gold{background:var(--gold);color:#3A2600;
-  text-shadow:-1px -1px 0 rgba(255,255,255,.4),1px 1px 0 rgba(20,24,31,.35)}
-#bankLine{margin-top:7px;font-size:min(4.4vw,18px);color:var(--gold-d)}
-#bankLine b{color:var(--orange-d)}
+#xpLine{margin-top:7px;font-size:min(4.4vw,18px);color:var(--gold-d)}
+#xpLine b{color:var(--orange-d)}
+#xpLine .lv{color:#0E7A3C}
 #conOutcome{margin-top:5px;font-size:min(4.2vw,16px);color:var(--blue-d)}
 </style>
 </head>
@@ -953,7 +1172,9 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
 <div id="hud">
   <div id="timerBox"><div class="mxbar"></div><div class="lbl">TIEMPO</div><div id="timerVal">0.00</div></div>
 
-  <div id="coinBox"><div class="mxbar"></div><div class="coinIcon"></div><div id="coinVal">0</div><div id="multPill">x2</div><div class="cLbl">MONEDAS</div></div>
+  <div id="coinBox"><div class="mxbar"></div><div class="coinIcon"></div><div id="coinVal">0</div><div id="multPill">x2</div>
+    <div id="xpCell"><div class="cLbl">MONEDAS</div><div id="xpTrack"><div id="xpFill"></div></div></div>
+    <div id="xpLvl">N0</div></div>
 
   <div id="progWrap">
     <div class="flagIcon flagMX"></div>
@@ -1021,8 +1242,13 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
     <div class="tricolor"></div>
     <div id="runLine">Carrera 1</div>
     <div id="bestTitle">MEJOR TIEMPO <b id="bestTitleVal">--</b></div>
-    <div class="wallet"><span class="coinIcon"></span><span>CARTERA <b id="walletTitle">0</b></span></div>
-    <div class="btnRow" style="margin-top:10px"><button class="btn gold" id="btnShopTitle" type="button">TALLER</button></div>
+    <div class="deckRow" id="deckTitle"></div>
+    <div id="deckEmpty">Junta monedas para subir de nivel y escoger cartas.</div>
+    <div class="hiWrap" id="hiTitleWrap">
+      <div class="hiHead">MEJORES PUNTAJES</div>
+      <table class="hiTable" id="hiTitleTable"></table>
+      <button class="hiMore" id="hiTitleMore" type="button">VER LOS 10</button>
+    </div>
     <div class="rule"></div>
     <div id="howRow">
       <div class="how a">
@@ -1042,6 +1268,7 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
       <div class="key"><span class="kcap">S</span> FRENAR &nbsp; <span class="kcap">P</span> PAUSA &nbsp; <span class="kcap">R</span> REINICIAR &nbsp; <span class="kcap">M</span> M&Uacute;SICA &nbsp; <span class="kcap">H</span> CLAXON</div>
     </div>
     <div class="blink">TOCA PARA EMPEZAR</div>
+    <button id="btnNewGame" type="button">NUEVA PARTIDA</button>
     <button id="iosTip" type="button"><span class="ic"></span><span>Para pantalla completa: Compartir <b>&#11014;</b> &rarr; Agregar a pantalla de inicio</span></button>
   </div>
 </div>
@@ -1052,6 +1279,7 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
     <h1 class="bigTitle">PAUSA</h1>
     <div class="sub">Respira. La frontera no se va a ning&uacute;n lado.</div>
     <div class="tricolor"></div>
+    <div class="deckRow" id="deckPause"></div>
     <div class="btnRow">
       <button class="btn" id="btnResume">SEGUIR</button>
       <button class="btn blue" id="btnRestart1">REINICIAR</button>
@@ -1096,11 +1324,21 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
     </div>
     <div id="bestLine">MEJOR: <span id="rBest">--</span><span id="newBest">&iexcl;NUEVO R&Eacute;CORD!</span></div>
     <div id="conOutcome"></div>
-    <div id="bankLine">BANQUEADOS <b id="rBanked">+0</b> &rarr; CARTERA <b id="rWallet">0</b></div>
-    <div id="nextUpg"></div>
+    <div id="xpLine">EXPERIENCIA <b id="rXp">+0</b> &middot; <span class="lv">NIVEL <b id="rLevel">0</b></span></div>
+    <div class="hiWrap" id="hiResWrap">
+      <div class="hiHead" id="hiResHead">MEJORES PUNTAJES</div>
+      <table class="hiTable" id="hiResTable"></table>
+      <div id="hiRank"></div>
+      <button class="hiMore" id="hiResMore" type="button">VER LOS 10</button>
+    </div>
+    <div id="nameRow">
+      <span class="nLbl">TU NOMBRE</span>
+      <input id="hiName" type="text" maxlength="12" autocomplete="off" autocorrect="off"
+             autocapitalize="characters" spellcheck="false" aria-label="Tu nombre">
+      <button id="hiSave" type="button">GUARDAR</button>
+    </div>
     <div class="btnRow">
       <button class="btn big" id="btnAgain">OTRA VUELTA</button>
-      <button class="btn gold big" id="btnShop">TALLER</button>
     </div>
   </div>
 </div>
@@ -1117,25 +1355,16 @@ body.touch #contractChip{top:calc(150px + var(--topsafe) + env(safe-area-inset-t
   </div>
 </div>
 
-<!-- ============ TALLER RESCO (the garage shop) ============ -->
-<div class="screen" id="scrShop">
-  <div class="card panel">
-    <div id="shopHead">
-      <div id="shopWrench"></div>
-      <h1 class="bigTitle">TALLER <span>RESCO</span></h1>
-    </div>
-    <div class="sub">MEJORAS PERMANENTES PARA LA CAMIONETA</div>
-    <div class="wallet"><span class="coinIcon"></span><span>CARTERA <b id="walletShop">0</b></span></div>
-    <div class="tricolor"></div>
-    <div id="shopGrid"></div>
-    <div id="shopStat"></div>
-    <div class="btnRow">
-      <button class="btn" id="btnShopClose">SALIR DEL TALLER</button>
-    </div>
-    <button id="shopReset" type="button">REINICIAR PROGRESO</button>
+<!-- ============ THE LEVEL-UP CARD DRAFT ============ -->
+<div id="scrLevel">
+  <div id="lvlInner">
+    <div id="lvlBurst"></div>
+    <div id="lvlBanner">NIVEL <b id="lvlNum">1</b></div>
+    <div id="lvlSub">ESCOGE UNA CARTA</div>
+    <div id="lvlCards"></div>
+    <div id="lvlHint">Toca una carta &nbsp;&middot;&nbsp; <span class="kcap">1</span><span class="kcap">2</span><span class="kcap">3</span> &nbsp;o&nbsp; <span class="kcap">&#9664;</span><span class="kcap">&#9654;</span> + <span class="kcap">ESPACIO</span></div>
   </div>
 </div>
-
 
 <div id="errbox">
   <button id="errboxX" type="button" aria-label="Cerrar">&times;</button>
@@ -1224,10 +1453,21 @@ try {
                  papel picado, the far banks - so the dressing stretches with
                  the deck instead of bunching up at the Mexican end.
 
-   1.48 turns the old ~3,100 units of obstacle course into ~4,440 and the old
-   ~59 s clean coast into ~88 s (FINISH_D 3,524 -> 5,014, +42%).
+   THE NUMBER IS SET BY THE CLOCK, NOT BY THE MAP. A measured clean run at
+   1.48 finished in 60 s of displayed TIEMPO - not the ~90 s it looked like -
+   and the brief is a two-minute crossing, so the scale is solved against the
+   stopwatch rather than guessed. The run time is very nearly linear in
+   COURSE_SCALE (every stretch of the speed-cap curve scales with it), at
+   about 34.2 s per unit of scale plus ~3.4 s of run-up, so 3.55 lands a clean
+   no-card run at ~2:05, a well-equipped one at ~1:58 and a run that takes
+   fifty hits at ~2:35. It turns the old ~3,100 units of obstacle course into
+   ~10,650 (FINISH_D 5,014 -> 11,455).
+
+   Note this is well past the 1.9-2.0 the brief estimated: that estimate
+   assumed the run was already 90 s and scaled linearly from there. From a
+   measured 60 s, two minutes needs roughly double.
    --------------------------------------------------------------------------- */
-var COURSE_SCALE = 1.48;
+var COURSE_SCALE = 3.55;
 var COURSE_ORIGIN = 95;
 function courseD(v) { return Math.round(COURSE_ORIGIN + (v - COURSE_ORIGIN) * COURSE_SCALE); }
 function bridgeD(v) { return Math.round(v * COURSE_SCALE); }
@@ -1239,26 +1479,33 @@ var CFG = {
   // longitudinal layout (all in "distance travelled" units, forward = -Z)
   START_D:      -40,     // deck begins behind the van
   COURSE_D0:     COURSE_ORIGIN,   // first obstacle allowed
-  COURSE_D1:    courseD(3095),    // last obstacle allowed              (4535)
-  DECK_END:     courseD(3200),    // flat deck ends / final ramp starts  (4690)
+  COURSE_D1:    courseD(3095),    // last obstacle allowed
+  DECK_END:     courseD(3200),    // flat deck ends / final ramp starts
   RAMP_LEN:      110,
   RAMP_RISE:      16,
   GAP:            46,    // open air between ramp lip and the landing ground
   PLAZA_LEN:     560,
 
   /* --- speeds (world units / second) ------------------------------------
-     GAME-FEEL PASS. The previous tuning traded away all the urgency for
-     readability, and the middle of the run went flat. The ladder is back up:
-     cruise 36 -> 44, ceiling 74 -> 86, boost ceiling 100 -> 118, and the cap
-     ramp now reaches V_MAX at 60% of the course instead of 70%, so the second
-     half is flat-out rather than still climbing. Readability is preserved by
-     DERIVING row spacing from the cap (rowGapAt) rather than hard-coding it,
-     so every decision point still buys >= MIN_REACT seconds.
-     KMH is unchanged, so the dial reads 110 km/h at cruise and 295 flat out. */
-  V_CRUISE:      44,
+     THE LADDER, retuned for a two-minute crossing.
+
+     V_CRUISE is the cap AT THE START LINE, not a mid-course cruise: the run
+     opens at 54 (135 km/h) rather than the old 44 (110), so the first fifteen
+     seconds are QUICKER than they used to be, not slower - a longer course
+     must not buy its length with a limp opening. From there the cap eases in
+     to V_MAX 104 (260 km/h) at the very end of the obstacle course, which is
+     where the final ramp is, so the finale is the fastest stretch of the run
+     by a wide margin (see speedCapAt).
+
+     Boost pads still shove past the cap: the boost ceiling is 140 (350 km/h)
+     and a SUPER BOOST is half again on top of that. Readability is preserved
+     because row spacing is DERIVED from the cap (rowGapAt) rather than
+     hard-coded, so every decision point still buys >= MIN_REACT seconds
+     wherever on the curve it falls. */
+  V_CRUISE:      54,     // the cap at the start line
   V_MIN:         14,
-  V_MAX:         86,
-  V_BOOST_MAX:  118,
+  V_MAX:         104,     // the cap at the end of the obstacle course
+  V_BOOST_MAX:  140,
   ACCEL:         11,
   ACCEL_COAST:    9.0,
   BRAKE:         30,
@@ -1267,12 +1514,7 @@ var CFG = {
   BOOST_TIME:    2.1,
   HIT_LOSS:      0.64,   // speed multiplier on impact
   INVULN:        1.15,
-  KMH:           2.50,   // display conversion: 44 -> 110 km/h, 118 -> 295 km/h
-  /* the effective ceiling RAMPS with progress: the opening runs near cruise so
-     a new player can read the road, and V_MAX is reached by RAMP_END of the
-     course - i.e. the last 40% is flat-out. Boost pads may still push past the
-     cap, briefly. */
-  RAMP_END:      0.60,
+  KMH:           2.50,   // display conversion: 54 -> 135 km/h, 140 -> 350 km/h
 
   LANE_TIME:     0.20,   // seconds for a lane change
   LANE_TIME_AIR: 0.44,   // slower, floatier steering while off the deck
@@ -1288,18 +1530,19 @@ var CFG = {
 /* the NPC rival, TRANSPORTES CHUY. Purely a pace-setter: non-collidable,
    never inside the solved corridor, and it never touches the course plans. */
 CFG.RIVAL = true;
-CFG.RAMP_TOP  = CFG.DECK_END + CFG.RAMP_LEN;              // 4800
-CFG.PLAZA_D0  = CFG.RAMP_TOP + CFG.GAP;                   // 4846  (touchdown, on LAND)
+CFG.RAMP_TOP  = CFG.DECK_END + CFG.RAMP_LEN;
+CFG.PLAZA_D0  = CFG.RAMP_TOP + CFG.GAP;                   // touchdown, on LAND
 CFG.FINISH_D  = CFG.PLAZA_D0 + 168;                       // customs checkpoint stop line
 CFG.PLAZA_D1  = CFG.PLAZA_D0 + CFG.PLAZA_LEN;
 CFG.ROAD_W    = CFG.LANES * CFG.LANE_W;                   // 17.6
 CFG.ROAD_HALF = CFG.ROAD_W * 0.5;
 CFG.DECK_W    = CFG.ROAD_W + 5.2;
 CFG.KMH_MAX   = Math.round(CFG.V_BOOST_MAX * CFG.KMH);    // HUD ceiling
-/* THE SUPER BOOST CEILING. Each of three pickups buys 2 s at 1.6x
-   the boost ceiling; the dial is allowed up there, and only up there, for as
-   long as it lasts. */
-CFG.V_SUPER_MAX = Math.round(CFG.V_BOOST_MAX * 1.6);      // 189
+/* THE SUPER BOOST CEILING. Each pickup buys 2 s at 1.5x the boost ceiling;
+   the dial is allowed up there, and only up there, for as long as it lasts.
+   1.5 rather than the old 1.6 because the boost ceiling itself went up: the
+   product is 210 (525 km/h), which is a big number that still reads. */
+CFG.V_SUPER_MAX = Math.round(CFG.V_BOOST_MAX * 1.5);
 CFG.KMH_SUPER   = Math.round(CFG.V_SUPER_MAX * CFG.KMH);  // 473
 /* --- the real Del Río / Ciudad Acuña International Bridge ------------------
    A LOW, FLAT, four-lane concrete girder bridge on piers, with a separate
@@ -1311,7 +1554,7 @@ CFG.PIER_STEP  = 40;                                      // one pier bent every
 CFG.WATER_Y    = -13;
 /* the international boundary follows the middle of the river - the MIDPOINT of
    the deck, wherever COURSE_SCALE puts that */
-CFG.BOUNDARY_D = courseD(1620);                           // 2352 ~= DECK_END/2
+CFG.BOUNDARY_D = courseD(1620);                           // ~= DECK_END/2
 
 /* --- the three jumps ------------------------------------------------------
    Each entry: d0 = ramp start, len / rise = the ramp, top = lip,
@@ -1395,16 +1638,44 @@ var COL = {
 function laneX(i) { return (i - (CFG.LANES - 1) * 0.5) * CFG.LANE_W; }
 
 /* ---------------------------------------------------------------------------
-   PROGRESSIVE SPEED CAP
-   The top speed the van can hold under its own power at distance d. It starts
-   at V_CRUISE and climbs linearly to V_MAX by RAMP_END of the course, so the
-   opening is easy and readable and the last third is the exciting part.
-   Everything that has to be "speed-proof" - row spacing, jump solves, the
-   corridor audit - is derived FROM this function, never hard-coded.
+   PROGRESSIVE SPEED CAP  -  AN EASE-IN, NOT A RAMP
+
+   The top speed the van can hold under its own power at distance d.
+
+   The old curve climbed LINEARLY from cruise to V_MAX over the first 60% of
+   the course and then sat flat for the remaining 40%. On a ninety-second run
+   that was fine; on a two-minute one it means the crossing stops getting
+   faster two thirds of the way in and the finale is no quicker than the
+   middle - the exact opposite of how a run should build.
+
+   It is an ease-in now, over the WHOLE obstacle course:
+
+       cap(t) = V_CRUISE + (V_MAX - V_CRUISE) * t^CAP_POW
+
+   with t the fraction of the course covered. The rate of change is small
+   early and large late, so:
+     - the opening sits at V_CRUISE, which is ABOVE the old cruise, so the
+       first fifteen seconds are quicker than the previous build's;
+     - the first half lifts gently (the player notices they are faster, but
+       nothing lurches);
+     - the last third climbs hard, and the last fifth is the fastest sustained
+       stretch of the run by a distance, straight into the final ramp.
+
+   Everything that has to be speed-proof is DERIVED from this function and
+   never hard-coded - row spacing (rowGapAt), the lane-change budget the
+   reachability solver spends (laneBudget), the rolling-hazard windows
+   (hazardIntervals), CHUY's pace and the ENTREGA URGENTE par - so the whole
+   fairness contract re-solves itself against whatever shape this is.
    --------------------------------------------------------------------------- */
+var CAP_POW = 2.4;
+/* how far along the ACCELERATION CURVE the van is, 0 at the line and 1 at the
+   last row. The camera, the FOV and the speed lines read it so the late
+   course LOOKS as fast as it is, not just reads faster on the dial. */
+function capFracAt(d) {
+  return clamp((d - CFG.COURSE_D0) / Math.max(1, CFG.COURSE_D1 - CFG.COURSE_D0), 0, 1);
+}
 function speedCapAt(d) {
-  var t = (d - CFG.COURSE_D0) / Math.max(1, (CFG.COURSE_D1 - CFG.COURSE_D0) * CFG.RAMP_END);
-  return CFG.V_CRUISE + (CFG.V_MAX - CFG.V_CRUISE) * clamp(t, 0, 1);
+  return CFG.V_CRUISE + (CFG.V_MAX - CFG.V_CRUISE) * Math.pow(capFracAt(d), CAP_POW);
 }
 /* The spacing between two consecutive decision points at distance d. Derived
    from the cap so that a player always gets at least MIN_REACT seconds to see
@@ -7299,6 +7570,46 @@ function releaseBoost(b) { b.visible = false; boostPool.push(b); }
    but it is what makes a dense section fair on first sight.
    ================================================================ */
 var warnPool = [], activeWarns = [];
+/* ---------------------------------------------------------------------------
+   COPILOTO
+   Two things, both pure telegraphing and neither of them able to touch a
+   hazard: the red "!" chevron is painted further back up the road, and as the
+   van reaches it the lane the corridor actually wants glows green for a
+   second. It reads what the solver already decided; it never changes it.
+   --------------------------------------------------------------------------- */
+var WARN_LEAD = 35;                    // where the chevron sits, before a row
+function copilotLead() { return WARN_LEAD * 0.40 * (MODS.copiloto || 0); }
+var laneGlow = null, LANEGLOW = { t: 0, dur: 1.0 };
+function buildLaneGlow() {
+  var m = new THREE.Mesh(new THREE.PlaneGeometry(CFG.LANE_W * 0.80, 96),
+    new THREE.MeshBasicMaterial({
+      color: 0x22D65B, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, fog: true
+    }));
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = 2;
+  m.userData.noOutline = true;
+  m.visible = false;
+  scene.add(m);
+  laneGlow = m;
+}
+function showLaneGlow(d, lane) {
+  if (!laneGlow) return;
+  laneGlow.position.set(laneX(lane), roadHeightAt(d) + 0.09, -(d + 44));
+  laneGlow.visible = true;
+  LANEGLOW.t = 0;
+}
+function updateLaneGlow(dt) {
+  if (!laneGlow || !laneGlow.visible) return;
+  LANEGLOW.t += dt;
+  var k = LANEGLOW.t / LANEGLOW.dur;
+  if (k >= 1) { laneGlow.visible = false; laneGlow.material.opacity = 0; return; }
+  laneGlow.material.opacity = 0.26 * Math.sin(Math.PI * k);
+}
+function clearLaneGlow() {
+  if (laneGlow) { laneGlow.visible = false; laneGlow.material.opacity = 0; }
+  LANEGLOW.t = 0;
+}
 function makeWarnDecal() {
   var g = new THREE.Group();
   var m = planeMesh(CFG.ROAD_W * 0.62, 5.2, new THREE.MeshBasicMaterial({
@@ -7580,7 +7891,7 @@ function comboAdd(v) {
     GAME.comboFill = 0;
     GAME.miniBoosts++;
     GAME.boostTime = Math.max(GAME.boostTime, 2.0);
-    GAME.speed = Math.min(vBoostMax(), GAME.speed + CFG.BOOST_KICK * 0.45);
+    GAME.speed = Math.min(vBoostMax(), GAME.speed + CFG.BOOST_KICK * 0.45 * MODS.boostKick);
     toastCol('¡COMBO LLENO! +TURBO', 'green');
     SFX.boost();
   }
@@ -8035,13 +8346,25 @@ function collectCoin(c) {
   GAME.streak++;
   if (GAME.streak > GAME.bestStreak) GAME.bestStreak = GAME.streak;
   var m = streakMult();
-  GAME.coinPts += 100 * m;
+  /* WHAT A COIN IS WORTH. DOBLE FACTURA raises it outright; SALTO LARGO pays
+     DOUBLE for gold taken in mid-air, which is what turns a jump's coin arc
+     into a line worth flying rather than one you happen to fall through. */
+  var air = (GAME.airborne && MODS.salto > 0) ? 2 : 1;
+  var worth = MODS.coinValue * air;
+  var pts = Math.round(100 * m * worth);
+  GAME.coinPts += pts;
+  /* AND THE SAME COIN IS THE XP. The contract multiplier is applied live here
+     rather than banked at the line, so a level-up lands where it was earned.
+     The fraction is carried so five hundred coins lose nothing to rounding. */
+  GAME.xpFrac += worth * contractLiveMult();
+  var whole = Math.floor(GAME.xpFrac);
+  if (whole > 0) { GAME.xpFrac -= whole; addXp(whole); }
   /* THE COUNTER TICKS HERE, in place, with its bump. There is no flight to the
      HUD corner and no arrival to wait for. */
   GAME.coinsHud = GAME.coins;
   bumpCoinBox();
   SFX.coin(Math.min(GAME.streak - 1, 12));          // the rising-pitch chime
-  fxPopNumber(u.px, u.py, u.pz, '+' + (100 * m));
+  fxPopNumber(u.px, u.py, u.pz, '+' + pts);
   if (GAME.streak === MODS.streakX2 || GAME.streak === MODS.streakX3) {
     toastCol('¡RACHA x' + m + '!', 'gold');
   }
@@ -8178,7 +8501,7 @@ function takePickup(kind, pos) {
     SFX.nitroReady();
     updateNitroUI();
   } else {
-    GAME.shield = true;
+    GAME.shields = Math.min(3, GAME.shields + 1);
     toastCol('¡ESCUDO!', 'blue');
     SFX.power();
   }
@@ -8203,8 +8526,23 @@ function clearWarns() {
 }
 function updateWarns() {
   for (var i = activeWarns.length - 1; i >= 0; i--) {
-    var w = activeWarns[i];
-    if (w.userData.d - GAME.dist < -CFG.DESPAWN_BEHIND) {
+    var w = activeWarns[i], u = w.userData;
+    /* COPILOTO: as the van reaches the chevron, the lane the corridor wants
+       at the row behind it lights up for a second. */
+    if (MODS.copiloto > 0 && !u.glowed && u.d - GAME.dist < 8) {
+      u.glowed = true;
+      var cl = corridorLanesAt(u.row);
+      if (cl) {
+        var pick = -1, best = 1e9, L;
+        for (L = 0; L < CFG.LANES; L++) {
+          if (!cl[L]) continue;
+          var dx = Math.abs(laneX(L) - GAME.x);
+          if (dx < best) { best = dx; pick = L; }
+        }
+        if (pick >= 0) showLaneGlow(u.row, pick);
+      }
+    }
+    if (u.d - GAME.dist < -CFG.DESPAWN_BEHIND) {
       releaseWarn(w);
       activeWarns.splice(i, 1);
     }
@@ -8395,6 +8733,7 @@ function stepPullOver(dt) {
   GAME.latVel = used > 0 ? (x - GAME.prevX) / used : 0;
   GAME.shake = damp(GAME.shake, 0, 10, dt);
   policeTruck.position.set(PULLOVER.shoulderX - PULLOVER.side * 3.2, GAME.y, -GAME.dist - 5);
+  MOMENT.policeX = policeTruck.position.x; MOMENT.policeD = GAME.dist + 5;
   policeLamps(Math.floor(t * 10) % 2 === 0);
   if (t >= POLICE_STOP_TIME) {
     PULLOVER.active = false;
@@ -8449,76 +8788,175 @@ function buildPolice() {
   scene.add(g);
   policeTruck = g;
 }
-/* the patrol car's own box, and how far up the road it reads */
+/* ===========================================================================
+   THE PATROL CAR
+
+   It used to converge on the player. The script parked it "beside you" at an
+   offset of +2 for three and a half seconds, its lane was chosen ONCE from
+   where the van happened to be when the siren started, and the only thing
+   that ever moved it afterwards was traffic - so the moment the player
+   changed lanes into it, or it swerved round a truck into them, it simply sat
+   there and the pull-over fired. From the seat that reads as a cop that aims
+   for you, which is exactly what it was.
+
+   It now actively avoids the van, under three rules:
+
+     BERTH      it never picks the van's lane, and never a lane inside
+                POL_BERTH of where the van actually is. If the van moves into
+                its lane it re-picks IMMEDIATELY (a 0.25 s commit instead of
+                the usual 0.7) and eases across.
+     STAND-OFF  while it is laterally close to the van it is not allowed to
+                sit alongside either: the scripted offset is pushed out of the
+                +/- POL_SAFE_D band on whichever side it is already on, so it
+                brakes back or pulls ahead instead of converging.
+     NEVER CLOSE  the hard one. Every frame it proposes a new (d, x); if that
+                proposal overlaps the van and its PREVIOUS position did not,
+                the patrol is the one doing the closing, and the move is
+                simply refused - it holds station and the van goes past. If
+                the overlap is there at the OLD position too, the van drove
+                into it, and that collision is allowed to land.
+
+   So a collision is only ever possible when the player steers into the car.
+   PLACAS FRONTERIZAS widens the berth and the stand-off, and adds a 25-unit
+   no-merge zone directly ahead of the van.
+   =========================================================================== */
 var POL_HW = 1.10, POL_HL = 2.60, POL_LOOK = 60, POL_GAP = 5.0;
+var POL_BERTH = 3.10;          // lateral clearance it steers to keep
+var POL_SAFE_D = 12.0;         // longitudinal band it will not sit in when close
+var POL_HIT_X = 2.38, POL_HIT_D = 5.8;      // the contact box, unchanged
+function policeBerth() { return POL_BERTH + (MODS.placas ? 1.9 : 0); }
+function policeStandoff() { return POL_SAFE_D + (MODS.placas ? 8 : 0); }
+/* is the patrol, at (d, x), actually touching the van right now? */
+function polHits(d, x) {
+  return Math.abs(x - GAME.x) < POL_HIT_X && Math.abs(d - GAME.dist) < POL_HIT_D;
+}
+/* the lane it wants: the one furthest from the van that is clear of traffic.
+   The van's own lane is never a candidate, at any price. */
+function policeWantLane(d) {
+  var berth = policeBerth();
+  var best = -1, bestScore = -1e9, L, lat, score;
+  for (L = 0; L < CFG.LANES; L++) {
+    if (L === GAME.lane) continue;
+    lat = Math.abs(laneX(L) - GAME.x);
+    if (lat < berth) continue;
+    score = lat;
+    if (laneBlocker(d - 6, laneX(L), POL_HW, POL_HL, POL_LOOK)) score -= 40;
+    if (L === MOMENT.policeLane) score += 6;          // hysteresis: prefer to stay put
+    if (score > bestScore) { bestScore = score; best = L; }
+  }
+  if (best >= 0) return best;
+  /* boxed in on every side: take whichever lane is furthest from the van
+     anyway. Two lanes away and blocked beats nought lanes away and clear. */
+  bestScore = -1e9;
+  for (L = 0; L < CFG.LANES; L++) {
+    if (L === GAME.lane) continue;
+    lat = Math.abs(laneX(L) - GAME.x);
+    if (lat > bestScore) { bestScore = lat; best = L; }
+  }
+  return best >= 0 ? best : MOMENT.policeLane;
+}
 function startPolice() {
   if (!policeTruck) return;
   MOMENT.police = 0;
   MOMENT.policeHit = false;
-  MOMENT.policeSide = (GAME.x > 0) ? -1 : 1;      // the outer lane furthest away
-  MOMENT.policeLane = (MOMENT.policeSide < 0) ? 0 : CFG.LANES - 1;
+  MOMENT.policeHold = 0;
+  MOMENT.policeLane = -1;
+  MOMENT.policeLane = policeWantLane(GAME.dist);
   MOMENT.policeX = laneX(MOMENT.policeLane);
+  MOMENT.policeSide = MOMENT.policeX < GAME.x ? -1 : 1;
   MOMENT.policeOff = -22;                         // catching up from behind
   MOMENT.policeD = GAME.dist + MOMENT.policeOff;
+  MOMENT.policeDPrev = MOMENT.policeD;
   policeTruck.visible = true;
   SFX.siren();
-  toastCol('¡PATRULLA! NO LA CHOQUES', 'blue');
+  toastCol('\u00a1PATRULLA! NO LA CHOQUES', 'blue');
 }
 function updatePolice(dt) {
   if (MOMENT.police < 0) return;
   MOMENT.police += dt;
   var t = MOMENT.police;
-  /* the OFFSET from the van is what is damped, never the absolute distance:
-     damping an absolute position against a van doing 100 units a second
-     leaves the escort permanently ~18 units behind, i.e. off the back of the
-     chase camera. */
+  var prevD = MOMENT.policeD, prevX = MOMENT.policeX;
+
+  /* ---- the scripted pace, as an OFFSET from the van. Damping an absolute
+     distance against a van doing a hundred units a second would leave the
+     escort permanently off the back of the chase camera. */
   var tgtOff = (t < 1.1) ? -12 : (t < 4.6) ? 2.0 : (26 + (t - 4.6) * 48);
-  MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, 2.8, dt);
-  MOMENT.policeD = GAME.dist + MOMENT.policeOff;
-  /* ---- it reads the road like everything else on it. Blocked in its lane:
-     take a clear neighbour, or hold station behind the obstruction rather
-     than drive through it. */
-  if (MOMENT.policeX === undefined) { MOMENT.policeLane = (MOMENT.policeSide < 0) ? 0 : CFG.LANES - 1; MOMENT.policeX = laneX(MOMENT.policeLane); }
-  /* its REAL speed, not the player's: in the last phase the scripted offset
-     accelerates it away at 48 u/s on top of the van, and reading the player's
-     speed there under-estimates the closing rate by half */
-  var polV = dt > 0 ? (MOMENT.policeD - (MOMENT.policeDPrev === undefined ? MOMENT.policeD : MOMENT.policeDPrev)) / dt : GAME.speed;
-  if (!isFinite(polV) || polV < 0) polV = GAME.speed;
-  MOMENT.policeDPrev = MOMENT.policeD;
-  var polLook = Math.max(POL_LOOK, polV * 1.6);
+
+  /* ---- RULE 1: THE BERTH. Re-pick the lane the instant the van crowds it or
+     shares it; otherwise re-pick on the usual commit timer.
+
+     CROWDED COUNTS THE DRIFT, not just the gap. A player halfway through a
+     lane change toward the patrol is already crowding it: waiting until they
+     have arrived leaves the car the ~0.7 s of its own slide to get clear in,
+     which is exactly long enough to be caught. So a van that is MOVING toward
+     it counts as crowding from nearly twice the distance out. */
   MOMENT.policeHold = Math.max(0, (MOMENT.policeHold || 0) - dt);
-  var blk = laneBlocker(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL, polLook);
-  if (blk && polV - blk.speed > 0.5) {
-    if (MOMENT.policeHold <= 0) {
-      var PL = pickFreeLane(MOMENT.policeLane, MOMENT.policeD, POL_HW, POL_HL, polLook);
-      if (PL >= 0 && PL !== MOMENT.policeLane) {
-        MOMENT.policeLane = PL; MOMENT.policeHold = 0.7; GHOST_AUDIT.policeSwerves++;
-      }
+  var berth = policeBerth();
+  var sep = Math.abs(MOMENT.policeX - GAME.x);
+  var toward = (MOMENT.policeX - GAME.x) * (GAME.latVel || 0) > 0;
+  var crowded = sep < berth || (toward && sep < berth * 1.8);
+  if (crowded || MOMENT.policeLane === GAME.lane || MOMENT.policeHold <= 0) {
+    var want = policeWantLane(MOMENT.policeD);
+    if (want >= 0 && want !== MOMENT.policeLane) {
+      MOMENT.policeLane = want;
+      MOMENT.policeHold = crowded ? 0.25 : 0.70;   // react fast when crowded
+      GHOST_AUDIT.policeSwerves++;
+    } else if (MOMENT.policeHold <= 0) {
+      MOMENT.policeHold = 0.50;
     }
   }
-  MOMENT.policeX = damp(MOMENT.policeX, laneX(MOMENT.policeLane), 4.0, dt);
-  /* the frontier, applied unconditionally: however the script wants to move
-     the escort, it stops behind whatever is really in its lane */
-  var polFront = laneBlocker(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL, POL_GAP + 2);
+
+  /* ---- RULE 2: THE STAND-OFF. While it is still laterally close it may not
+     ride alongside: push the target offset out of the danger band on the side
+     it is already on, so it brakes away or peels off ahead. PLACAS
+     FRONTERIZAS also keeps it out of the 25 units directly in front. */
+  var standoff = policeStandoff();
+  var noAhead = MODS.placas ? 25 : 0;
+  if (crowded || sep < berth + CFG.LANE_W * 0.5) {
+    var lo = -standoff, hi = Math.max(standoff, noAhead);
+    if (tgtOff > lo && tgtOff < hi) tgtOff = (tgtOff >= 0) ? hi : lo;
+  }
+  /* and it gets out of the way FASTER once it is crowded: 2.8 / 4.0 are the
+     rates of a car cruising beside you, which is not what this is any more */
+  MOMENT.policeOff = damp(MOMENT.policeOff, tgtOff, crowded ? 5.5 : 2.8, dt);
+  var newD = GAME.dist + MOMENT.policeOff;
+  var newX = damp(MOMENT.policeX, laneX(MOMENT.policeLane), crowded ? 9.0 : 4.0, dt);
+
+  /* ---- it reads the road like everything else on it. Blocked in its lane:
+     hold station behind the obstruction rather than drive through it. */
+  var polV = dt > 0 ? (newD - (MOMENT.policeDPrev === undefined ? newD : MOMENT.policeDPrev)) / dt : GAME.speed;
+  if (!isFinite(polV) || polV < 0) polV = GAME.speed;
+  var polFront = laneBlocker(newD, newX, POL_HW, POL_HL, POL_GAP + 2);
   if (polFront && polFront.gap < POL_GAP) {
     GHOST_AUDIT.policeBrakes++;
-    MOMENT.policeD += Math.min(0, polFront.gap - POL_GAP);
-    MOMENT.policeOff = MOMENT.policeD - GAME.dist;
+    newD += Math.min(0, polFront.gap - POL_GAP);
   }
-  var over = boxOverlap(MOMENT.policeD, MOMENT.policeX, POL_HW, POL_HL);
+  var over = boxOverlap(newD, newX, POL_HW, POL_HL);
   if (over) {
     GHOST_AUDIT.policeOverlaps++;
     var pu = over.userData;
-    MOMENT.policeD = (pu.d >= MOMENT.policeD) ? (pu.d - pu.halfL - POL_HL - 0.35)
-                                              : (pu.d + pu.halfL + POL_HL + 0.35);
-    MOMENT.policeOff = MOMENT.policeD - GAME.dist;
+    newD = (pu.d >= newD) ? (pu.d - pu.halfL - POL_HL - 0.35)
+                          : (pu.d + pu.halfL + POL_HL + 0.35);
   }
-  var px = MOMENT.policeX;
-  policeTruck.position.set(px, roadHeightAt(MOMENT.policeD), -MOMENT.policeD);
+
+  /* ---- RULE 3: IT NEVER CLOSES. If the move it is about to make would put
+     it inside the van and its PREVIOUS position was clear, the patrol is the
+     one doing the closing: refuse the move outright. If the old position is
+     inside the van too, the van drove into IT, and that is allowed to land -
+     which is what keeps a deliberate ram a real collision. */
+  if (polHits(newD, newX) && !polHits(prevD, prevX)) {
+    newD = prevD; newX = prevX;
+    GHOST_AUDIT.policeBrakes++;
+  }
+  MOMENT.policeD = newD;
+  MOMENT.policeX = newX;
+  MOMENT.policeOff = newD - GAME.dist;
+  MOMENT.policeDPrev = newD;
+
+  policeTruck.position.set(newX, roadHeightAt(newD), -newD);
   policeTruck.rotation.y = damp(policeTruck.rotation.y, 0, 6, dt);
   if (!MOMENT.policeHit && GAME.state === 'PLAYING' && !GAME.airborne &&
-      !jumpClearZone(GAME.dist) && Math.abs(px - GAME.x) < 2.38 &&
-      Math.abs(MOMENT.policeD - GAME.dist) < 5.8) {
+      !jumpClearZone(GAME.dist) && polHits(newD, newX)) {
     beginPullOver();
     return;
   }
@@ -9468,8 +9906,8 @@ function generateCourse(seed) {
       denseIdx++;
       if (kind === 'TRAFFIC' && !firstTrafficD) firstTrafficD = d;
       sectionPlan.push({ d: d - 62, text: THEMES[kind].label, sub: '', zone: 'dense', mark: 'start' });
-      // the red "!" chevron, painted 35 units before the very first row
-      warnPlan.push({ d: d - 35 });
+      // the red "!" chevron, painted WARN_LEAD units before the very first row
+      warnPlan.push({ d: d - WARN_LEAD });
 
       /* 2 or 3 authored chunks back to back, least-used first so a run gets
          a spread of the library rather than the same chunk five times.
@@ -9803,9 +10241,15 @@ function streamCourse(dist) {
   while (warnCursor < warnPlan.length && warnPlan[warnCursor].d < dist + CFG.SPAWN_AHEAD) {
     var wrec = warnPlan[warnCursor++];
     var wd = acquireWarn();
-    wd.userData.d = wrec.d;
-    wd.position.set(0, roadHeightAt(wrec.d), -wrec.d);
-    wd.rotation.x = roadSlopeAt(wrec.d) * -1;
+    /* COPILOTO paints the chevron FURTHER BACK up the road. The plan is never
+       touched - only where this decal is drawn - so nothing the reachability
+       solver proved about the row it warns for can move. */
+    var wdd = wrec.d - copilotLead();
+    wd.userData.d = wdd;
+    wd.userData.row = wrec.d + WARN_LEAD;      // the first row it is warning for
+    wd.userData.glowed = false;
+    wd.position.set(0, roadHeightAt(wdd), -wdd);
+    wd.rotation.x = roadSlopeAt(wdd) * -1;
     activeWarns.push(wd);
   }
 }
@@ -10151,7 +10595,29 @@ function trumpetPhrase(notes, gain) {
 }
 
 var SFX = {
-  /* the TALLER's ratchet: a short metallic clack plus a rising click train */
+  /* LEVEL UP: a bright rising arpeggio with a shimmer over it. It is the
+     reward chime for the whole draft, so it is deliberately the sweetest
+     sound in the game. */
+  levelUp: function () {
+    if (!audioReady) return;
+    musDuckNow(0.50);
+    var f = [523.25, 659.25, 783.99, 1046.50], i;
+    for (i = 0; i < f.length; i++) {
+      tone(f[i], 0.20, 'triangle', 0.13, null, i * 0.075);
+      tone(f[i] * 2, 0.13, 'sine', 0.055, null, i * 0.075 + 0.012);
+    }
+    tone(1318.51, 0.55, 'sine', 0.10, null, 0.30);
+    noiseBurst(0.45, 2600, 7200, 0.055, 'bandpass');
+  },
+  /* taking one: a short, satisfying card-snap plus a confirming fifth */
+  cardTake: function () {
+    if (!audioReady) return;
+    noiseBurst(0.09, 4200, 1200, 0.14, 'bandpass');
+    tone(659.25, 0.10, 'triangle', 0.12);
+    tone(987.77, 0.22, 'triangle', 0.10, null, 0.07);
+    tone(1318.51, 0.30, 'sine', 0.07, null, 0.14);
+  },
+  /* a short metallic clack plus a rising click train */
   wrench: function () {
     if (!audioReady) return;
     noiseBurst(0.10, 5200, 1400, 0.16, 'bandpass');
@@ -11331,23 +11797,40 @@ function renderMusicOffline(opts) {
    during the traffic-jam interlude, and the same trip through masterGain, so
    M, ?mute=1 and the master limiter all apply to it unchanged.
 
-   Position: a looping AudioBufferSourceNode has no seek, so pausing STOPS the
-   source after storing songPosition() and unpausing starts a new one at that
-   offset - which is what makes "resume where it was" exact. A new run always
-   restarts at 0. playbackRate is deliberately left at 1.0 so that arithmetic
-   stays exact; the boost variation is the +2 dB high shelf alone.
+   ONE CONTINUOUS TAKE. The recording is started EXACTLY ONCE, on the first
+   real user gesture, and from then on it is never stopped, never paused and
+   never re-seeked for the life of the page. It used to restart from zero at
+   the top of every run (songRestart) and stop outright on a pause or at the
+   customs handoff, and every one of those was audible - a clipped cut on the
+   way into a run and a dead spot on the way out.
+
+   All that changes now is SONG.gain, ramped with setTargetAtTime: 0.35 under
+   the title card and the contract picker, 0.85 in the run, 0.55 behind a
+   level-up draft, and a whisper under the customs drone so the gag has its
+   air. The time constant is SONG_RAMP, which settles in about 0.8 s, and
+   because gain is the only thing moving there is no gap, no click and no
+   restart at any state transition:
+     title -> picker -> run -> draft freeze -> results -> title -> run again
+   is one unbroken pass through the same buffer.
+
+   loop is true and the loop points are left at the buffer's own ends - the
+   file has no marked loop region, so the whole recording is the loop.
+   playbackRate stays at 1.0 so songPosition() arithmetic is exact; the boost
+   variation is the +2 dB high shelf alone.
    ================================================================ */
 var SONG_FILE = 'music.mp3';
 var SONG_GAIN_RUN = 0.85;        // the run: the song IS the soundtrack
-var SONG_GAIN_TITLE = 0.35;      // the title card: quietly, under the menu
-var SONG_FADE = 0.45;            // seconds to fade out at the customs handoff
+var SONG_GAIN_TITLE = 0.35;      // title / pause / picker: under the menu
+var SONG_GAIN_DRAFT = 0.55;      // behind a level-up: present, not shouting
+var SONG_GAIN_CUSTOMS = 0.05;    // the drone and the factura line own the end
+var SONG_RAMP = 0.26;            // setTargetAtTime tau: ~0.8 s to settle
 var SONG = {
   state: 'idle',                 // idle | loading | ready | failed
   mode: '',                      // buffer | element
   url: '', err: '',
   buf: null, dur: 0, el: null, elNode: null, src: null,
   gain: null, shelf: null,
-  playing: false, started: false, startedAt: 0, offset: 0, stopAt: 0,
+  playing: false, started: false, startedAt: 0, offset: 0,
   plays: 0, shelfDb: 0
 };
 function songUrl() {
@@ -11484,7 +11967,11 @@ function songPlayFrom(off) {
   if (SONG.mode === 'buffer' && SONG.buf) {
     var s = AC.createBufferSource();
     s.buffer = SONG.buf;
+    /* the whole recording is the loop: there is no marked loop region in the
+       file, so loopStart / loopEnd stay at the buffer's own ends */
     s.loop = true;
+    s.loopStart = 0;
+    s.loopEnd = SONG.buf.duration;
     s.connect(SONG.shelf);
     try { s.start(0, off); } catch (e) { try { s.start(0); } catch (e2) { } }
     SONG.src = s;
@@ -11505,27 +11992,26 @@ function songPlayFrom(off) {
   SONG.playing = true;
   SONG.plays++;
 }
-function songPause() {
-  if (!SONG.playing) return;
-  SONG.offset = songPosition();
-  songStopSource();
-}
-/* a NEW run always starts the recording from the top */
-function songRestart() {
-  SONG.offset = 0;
-  if (SONG.playing) songPlayFrom(0); else SONG.stopAt = 0;
-}
+/* NOTHING PAUSES THE SONG ANY MORE. songStopSource() survives only so the
+   loader can swap a half-built source out if decoding lands twice; once the
+   recording is playing, the only control is the gain. */
 /* is the recording, rather than the synthesized band, the soundtrack? */
 function songOwnsMusic() {
   return SONG.state === 'ready' && SONG.started && MUS.on;
 }
+/* WHERE THE SONG SITS, per state. It is never zero except when the music is
+   switched off entirely: the customs handoff ducks it to a whisper instead of
+   stopping it, so the band can come back up under the results card without a
+   single sample of silence in between. */
 function songWantGain() {
   if (!songOwnsMusic()) return 0;
-  if (GAME.state === 'PLAYING') return SONG_GAIN_RUN;
-  if (GAME.state === 'TITLE') return SONG_GAIN_TITLE;
-  // PAUSED stops it and keeps the position; FINISHED hands over to the drone
-  if (GAME.state === 'FINISHED') return GAME.finPhase <= 0 ? SONG_GAIN_RUN : 0;
-  return 0;
+  if (GAME.state === 'PLAYING') return LVL.active ? SONG_GAIN_DRAFT : SONG_GAIN_RUN;
+  if (GAME.state === 'FINISHED') {
+    if (GAME.finPhase <= 0) return SONG_GAIN_RUN;        // still rolling to the booth
+    if (GAME.finPhase >= 4) return SONG_GAIN_TITLE;      // the results card
+    return SONG_GAIN_CUSTOMS;                            // the drone has the frame
+  }
+  return SONG_GAIN_TITLE;                                // TITLE, PAUSED, the picker
 }
 /* driven once a frame from frame(), next to musSetMode() */
 function songApply() {
@@ -11533,28 +12019,20 @@ function songApply() {
   songConnect();
   var want = songWantGain();
   var t = AC.currentTime;
+  /* THE ONE START. After this the source runs for the life of the page. */
+  if (!SONG.playing && SONG.started && (want > 0 || MUS.on)) songPlayFrom(SONG.offset);
   try {
-    SONG.gain.gain.setTargetAtTime(Math.max(0.0001, want), t, want > 0 ? 0.10 : 0.14);
+    SONG.gain.gain.setTargetAtTime(Math.max(0.0001, want), t, SONG_RAMP);
   } catch (e) { }
-  if (want > 0) {
-    SONG.stopAt = 0;
-    if (!SONG.playing) songPlayFrom(SONG.offset);
-    /* BOOST VARIATION. A gentle +2 dB high shelf while the turbo is lit -
-       enough to lift the brass and the cymbals so the song leans into the
-       speed. playbackRate is left alone on purpose: nudging it would put
-       songPosition() out of step with the buffer for the rest of the run. */
-    var lift = (GAME.state === 'PLAYING' && (GAME.boostTime > 0 || GAME.superT > 0)) ? 2 : 0;
-    if (lift !== SONG.shelfDb) {
-      SONG.shelfDb = lift;
-      try { SONG.shelf.gain.setTargetAtTime(lift, t, 0.15); } catch (e2) { }
-    }
-  } else if (SONG.playing) {
-    if (!SONG.stopAt) SONG.stopAt = t + SONG_FADE;      // let the fade finish
-    else if (t >= SONG.stopAt) { songPause(); SONG.stopAt = 0; }
-    if (SONG.shelfDb !== 0) {
-      SONG.shelfDb = 0;
-      try { SONG.shelf.gain.setTargetAtTime(0, t, 0.15); } catch (e3) { }
-    }
+  /* BOOST VARIATION. A gentle +2 dB high shelf while the turbo is lit - enough
+     to lift the brass and the cymbals so the song leans into the speed.
+     playbackRate is left alone on purpose: nudging it would put
+     songPosition() out of step with the buffer for the rest of the run. */
+  var lift = (GAME.state === 'PLAYING' && !LVL.active &&
+              (GAME.boostTime > 0 || GAME.superT > 0)) ? 2 : 0;
+  if (lift !== SONG.shelfDb) {
+    SONG.shelfDb = lift;
+    try { SONG.shelf.gain.setTargetAtTime(lift, t, 0.15); } catch (e2) { }
   }
 }
 
@@ -11619,6 +12097,11 @@ function onKeyDown(e) {
   var k = e.key;
   var code = e.code;
   if (k === undefined) return;
+  /* THE NAME BOX. It is a real text input on the results card, so every key
+     that lands in it - including M, H, R and P - has to stop here or typing
+     "RAMIRO" would restart the run twice and mute the music. */
+  var tgt = e.target;
+  if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
   var lk = ('' + k).toLowerCase();
 
   // M always toggles the music, in every state, and never starts the run
@@ -11634,6 +12117,9 @@ function onKeyDown(e) {
     e.preventDefault();
     return;
   }
+  /* the draft owns the keyboard while it is up: 1 / 2 / 3 take a card
+     outright, the arrows move the highlight and SPACE or ENTER takes it */
+  if (LVL.active) { if (draftKey(lk, code)) e.preventDefault(); return; }
   // a menu is open: the keyboard must not punch straight through it into a run
   if (modalOpen()) return;
 
@@ -11833,27 +12319,30 @@ function bindInput() {
   uiBtn('btnResume', function () { setPaused(false); });
   uiBtn('btnRestart1', function () { restart(); });
   uiBtn('btnAgain', function () { againRun(); });
-  uiBtn('btnShop', function () { openShop('scrResults'); });
-  uiBtn('btnShopTitle', function () { openShop('scrTitle'); });
-  uiBtn('btnShopClose', function () { closeShop(); });
-  /* REINICIAR PROGRESO asks twice rather than calling confirm(), which a
-     sandboxed iframe is allowed to refuse outright. */
+  /* NUEVA PARTIDA asks twice rather than calling confirm(), which a sandboxed
+     iframe is allowed to refuse outright. */
   (function () {
-    var el = $('shopReset');
+    var el = $('btnNewGame');
     if (!el) return;
     var armed = 0;
     el.addEventListener('click', function (ev) {
       ev.stopPropagation();
       if (!armed) {
         armed = 1;
-        el.textContent = '¿SEGURO? TOCA OTRA VEZ PARA BORRAR TODO';
-        window.setTimeout(function () { armed = 0; el.textContent = 'REINICIAR PROGRESO'; }, 4000);
+        el.textContent = '¿SEGURO? TOCA OTRA VEZ PARA BORRAR EL MAZO';
+        window.setTimeout(function () { armed = 0; el.textContent = 'NUEVA PARTIDA'; }, 4000);
         return;
       }
       armed = 0;
-      el.textContent = 'REINICIAR PROGRESO';
-      resetProgress();
+      el.textContent = 'NUEVA PARTIDA';
+      resetDeck();
     }, false);
+  })();
+  bindScoreUI();
+  /* the draft's own scroll container */
+  (function () {
+    var el = $('scrLevel');
+    if (el) el.addEventListener('scroll', updateScrollCues, { passive: true });
   })();
   uiBtn('btnMusic', function () { toggleMusic(); });
   uiBtn('btnMusic2', function () { toggleMusic(); });
@@ -12136,7 +12625,7 @@ function onResize() {
   renderer.domElement.style.height = h + 'px';
   layoutVars(w, h);
   syncFsUI();
-  updateScrollCues();            // a card that fitted may not fit any more
+  fitCards();                    // a card that fitted may not fit any more
   invalidateHudRects();          // the HUD panels just moved
   CHIP_DIRTY = true;             // and so did the contract chip's anchor
 }
@@ -12261,12 +12750,15 @@ function pickFreeLane(lane, d, halfW, halfL, look) {
    ================================================================ */
 var rivalVan = null, rivalMats = [], RIVAL_OUTLINE = null;
 var rivalBubble = null, RIVAL_BUB_TEX = {};
-/* CHUY's target finish, in seconds. A clean, boosting run of the course is
-   ~56-59 s and an unsteered, hit-taking run is ~64 s, so 60.5 s is a rival a
-   good run beats and a sloppy one does not. RIVAL.k is solved from it at every reset by
-   integrating the speed-cap curve, so the pace stays correct if the speed
-   ladder is ever retuned. */
-var RIVAL_TARGET = 60.5;
+/* CHUY's target finish, in seconds. It used to be a hard-coded 60.5, which on
+   a longer course meant "finish in a minute whatever the bridge is" - the pace
+   solver would simply clamp at 2.2x the cap and he would vanish over the
+   horizon. It is DERIVED now: rivalTimeFor(1) is the time a van that exactly
+   follows the speed cap takes over this course, and CHUY is set 3% inside it.
+   That is comfortably faster than a passive run and comfortably slower than
+   one that takes the boost chains, on any COURSE_SCALE and any speed ladder. */
+var RIVAL_TARGET = 0;
+var RIVAL_TIGHT = 0.97;
 var RIVAL_PACE = 1.0;
 var RIVAL_TAUNTS = ['\u00a1AH\u00cd TE VES, RESCO!', '\u00a1ADI\u00d3S, COMPA!',
                     '\u00a1LA FACTURA TE ESPERA!', '\u00a1ESTA ES M\u00cdA!'];
@@ -12410,6 +12902,8 @@ function rivalTimeFor(k) {
 }
 function solveRivalPace() {
   var k = 1.0;
+  if (!RIVAL_TARGET) RIVAL_TARGET = rivalTimeFor(1.0) * RIVAL_TIGHT;
+  if (!PAR_BASE) PAR_BASE = solvePar();
   for (var i = 0; i < 3; i++) {
     var tt = rivalTimeFor(k);
     if (!isFinite(tt) || tt <= 0) break;
@@ -12593,141 +13087,777 @@ function updateRival(dt) {
 }
 
 /* ================================================================
-   16. META-PROGRESSION  -  THE WALLET, THE TALLER, THE CONTRACTS
+   16. THE DECK  -  XP, THE CARD DRAFT, AND THE CONTRACTS
 
-   Everything in this section is READ ONCE at the start of a run, into
-   MODS, and never touched again while the van is moving. That is the
-   whole balance contract: an upgrade can change how a run STARTS, it
-   can never change what the course IS. generateCourse() is untouched,
-   so __RR.audit() / __RR.regen(seed) return exactly what they always
-   did, whatever the player has bought.
+   The TALLER RESCO is gone. There is no wallet and there is nothing to
+   buy: coins are EXPERIENCE, crossing a level threshold freezes the run
+   and deals three cards face up, and the one you take applies on the
+   spot. A deck lives for as long as the tab is open and dies with it.
 
-   Three localStorage keys, all wrapped in try/catch:
-     rr_wallet     banked coins (integer)
-     rr_upgrades   {id: level}
-     (rr_runs_done / the best time / the music pref are older keys)
+   THE BALANCE CONTRACT, unchanged in the one way that matters: a card
+   may change how the VAN behaves, never what the COURSE is.
+   generateCourse() is untouched and reads nothing from here, so
+   __RR.audit() / __RR.regen(seed) return exactly what they always did
+   whatever the deck holds. MODS is the single object the physics reads;
+   it is refilled at the top of every run AND the instant a card is
+   taken mid-run, and nothing else ever writes to it.
+
+   STORAGE
+     rr_cards_v1   sessionStorage  {xp, level, deck:{id:level}}
+                   -> survives a reload in the same tab, dies with it
+     rr_scores     localStorage    the top ten, with names
+     rr_lastname   localStorage    what to pre-fill the name box with
+     rr_wallet / rr_upgrades       DELETED at boot (the old economy)
    ================================================================ */
-var WALLET_KEY = 'rr_wallet', UPG_KEY = 'rr_upgrades';
 function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { } }
 function lsDel(k) { try { window.localStorage.removeItem(k); } catch (e) { } }
+function ssGet(k) { try { return window.sessionStorage.getItem(k); } catch (e) { return null; } }
+function ssSet(k, v) { try { window.sessionStorage.setItem(k, v); } catch (e) { } }
+function ssDel(k) { try { window.sessionStorage.removeItem(k); } catch (e) { } }
 
-function loadWallet() {
-  var n = parseInt(lsGet(WALLET_KEY), 10);
-  return (isFinite(n) && n >= 0) ? n : 0;
-}
-function saveWallet(n) { lsSet(WALLET_KEY, String(Math.max(0, n | 0))); }
+/* the two keys of the deleted economy. Removed once, at boot, so a player
+   who has been carrying a 14,000-coin wallet around does not keep it in
+   storage forever for a shop that no longer exists. */
+function migrateAwayWallet() { lsDel('rr_wallet'); lsDel('rr_upgrades'); }
 
 /* ---------------------------------------------------------------------------
-   THE UPGRADE TREE
-   Hard caps, diminishing returns, escalating cost = base * 1.6^level rounded
-   to the nearest 10. Nine gameplay upgrades and three cosmetics; the whole
-   tree costs 16,720 coins, which at ~250 banked coins a run plus contract
-   multipliers and the CHUY bonus is roughly 28 completed races.
+   THE CARD POOL  -  sixteen cards, five categories, hard caps.
+
+   Every one is border-crossing / cargo-van flavoured and every one is
+   MECHANICAL: there are no stat-free trinkets in here. The category is the
+   colour of the card's header band and the whole legend for it:
+     speed / boost  GREEN     protection  BLUE
+     economy        GOLD      nitro       RED        utility  GREY
+   `eff(l)` is what the card reads like AT level l, so the draft can offer
+   "what you would have" rather than "what you have".
+
+   Balance: no single card trivialises a run - the biggest single line is
+   MOTOR TRUCADO at +18% top speed across three copies - but a full session
+   deck stacks into something that genuinely flies. Nothing here touches
+   obstacle placement, so the reachability proof is untouched (a faster lane
+   change only ever widens the solver's own budget).
    --------------------------------------------------------------------------- */
-var UPGRADES = [
-  { id: 'motor', name: 'MOTOR', max: 5, base: 300,
-    desc: 'Velocidad m\u00e1xima +3% por nivel',
-    stat: function (l) { return 'Tope +' + (l * 3) + '%'; } },
-  { id: 'turbo', name: 'TURBO', max: 4, base: 250,
-    desc: 'El turbo dura +0.2 s por nivel',
-    stat: function (l) { return 'Turbo ' + (CFG.BOOST_TIME + l * 0.2).toFixed(1) + ' s'; } },
-  { id: 'susp', name: 'SUSPENSI\u00d3N', max: 3, base: 300,
-    desc: 'Cambio de carril 8% m\u00e1s r\u00e1pido por nivel',
-    stat: function (l) { return 'Carril ' + (CFG.LANE_TIME * Math.pow(0.92, l)).toFixed(3) + ' s'; } },
-  { id: 'iman', name: 'IM\u00c1N', max: 3, base: 200,
-    desc: 'Atrae monedas +0.3 carriles por nivel',
-    stat: function (l) { return 'Alcance ' + (l * 0.3).toFixed(1) + ' carriles'; } },
-  { id: 'blindaje', name: 'BLINDAJE', max: 4, base: 350,
-    desc: 'Conservas +4 puntos de velocidad al chocar',
-    stat: function (l) { return 'Conservas ' + Math.round((CFG.HIT_LOSS + l * 0.04) * 100) + '%'; } },
-  { id: 'escudo', name: 'ESCUDO DE SALIDA', max: 1, base: 900,
-    desc: 'Arrancas cada carrera con un escudo',
-    stat: function (l) { return l ? 'Escudo al arrancar' : 'Sin escudo'; } },
-  { id: 'nitroX', name: 'NITRO EXTRA', max: 2, base: 500,
-    desc: '+12% de probabilidad de un bid\u00f3n extra',
-    stat: function (l) { return (l * 12) + '% de bid\u00f3n extra'; } },
-  { id: 'racha', name: 'RACHA', max: 2, base: 400,
-    desc: 'Los multiplicadores de racha llegan antes',
-    stat: function (l) { var a = STREAK_X2 - l, b = STREAK_X3 - l * 2; return 'x2 a ' + a + ' \u00b7 x3 a ' + b; } },
-  { id: 'claxon', name: 'CLAX\u00d3N', max: 1, base: 150, cosmetic: true,
-    desc: 'La Cucaracha en la bocina (tecla H)',
-    stat: function (l) { return l ? 'La Cucaracha' : 'Bocina normal'; } },
-  { id: 'luces', name: 'LUCES DE TECHO', max: 1, base: 200, cosmetic: true,
-    desc: 'Barra de luces \u00e1mbar en el techo',
-    stat: function (l) { return l ? 'Instaladas' : 'Sin barra'; } },
-  { id: 'calcas', name: 'CALCOMAN\u00cdAS', max: 1, base: 250, cosmetic: true,
-    desc: 'Banderas y calcas extra en la carrocer\u00eda',
-    stat: function (l) { return l ? 'Pegadas' : 'Carrocer\u00eda limpia'; } }
+var CARD_CATS = {
+  speed:      'VELOCIDAD',
+  boost:      'TURBO',
+  nitro:      'NITRO',
+  protection: 'PROTECCI\u00d3N',
+  economy:    'ECONOM\u00cdA',
+  utility:    'UTILIDAD'
+};
+var CARD_POOL = [
+  { id: 'motor', name: 'MOTOR TRUCADO', cat: 'speed', max: 3,
+    eff: function (l) { return 'Velocidad tope +' + (l * 6) + '%'; } },
+  { id: 'susp', name: 'SUSPENSI\u00d3N REFORZADA', cat: 'speed', max: 3,
+    eff: function (l) { return 'Cambio de carril ' + Math.round((1 - Math.pow(0.88, l)) * 100) + '% m\u00e1s r\u00e1pido'; } },
+  { id: 'caja', name: 'CAJA LIGERA', cat: 'speed', max: 2,
+    eff: function (l) { return 'Aceleraci\u00f3n +' + (l * 15) + '%'; } },
+  { id: 'turbo', name: 'TURBO LARGO', cat: 'boost', max: 3,
+    eff: function (l) { return 'Las rampas verdes duran +' + (l * 0.35).toFixed(2) + ' s'; } },
+  { id: 'gasolina', name: 'GASOLINA PREMIUM', cat: 'boost', max: 2,
+    eff: function (l) { return 'El empuj\u00f3n del turbo +' + (l * 15) + '%'; } },
+  { id: 'nitro', name: 'NITRO DE RESERVA', cat: 'nitro', max: 2,
+    eff: function (l) { return l >= 2 ? 'Arrancas con bid\u00f3n \u00b7 y salen el doble'
+                                      : 'Arrancas cada carrera con un bid\u00f3n'; } },
+  { id: 'llantas', name: 'LLANTAS NUEVAS', cat: 'protection', max: 3,
+    eff: function (l) { return 'Conservas ' + Math.round((CFG.HIT_LOSS + l * 0.06) * 100) + '% de velocidad al chocar'; } },
+  { id: 'carga', name: 'CARGA ASEGURADA', cat: 'protection', max: 2,
+    eff: function (l) { return 'Arrancas con ' + l + ' escudo' + (l > 1 ? 's' : ''); } },
+  { id: 'estampita', name: 'ESTAMPITA DEL TABLERO', cat: 'protection', max: 2,
+    eff: function (l) { return 'El santito anula ' + l + ' golpe' + (l > 1 ? 's' : '') + ' por carrera'; } },
+  { id: 'factura', name: 'DOBLE FACTURA', cat: 'economy', max: 3,
+    eff: function (l) { return 'Las monedas valen +' + (l * 40) + '% (XP y puntos)'; } },
+  { id: 'iman', name: 'IM\u00c1N DE CARGA', cat: 'economy', max: 3,
+    eff: function (l) { return 'Atrae monedas ' + (l * 0.35).toFixed(2) + ' carriles'; } },
+  { id: 'racha', name: 'RACHA CALIENTE', cat: 'economy', max: 2,
+    eff: function (l) { var a = Math.max(3, Math.round(STREAK_X2 * Math.pow(0.70, l)));
+                        var b = Math.max(5, Math.round(STREAK_X3 * Math.pow(0.70, l)));
+                        return 'x2 a las ' + a + ' \u00b7 x3 a las ' + b; } },
+  { id: 'claxon', name: 'CLAX\u00d3N DE AIRE', cat: 'utility', max: 1,
+    eff: function (l) { return 'El claxon (H) aparta el tr\u00e1fico de tu carril'; } },
+  { id: 'placas', name: 'PLACAS FRONTERIZAS', cat: 'utility', max: 1,
+    eff: function (l) { return 'Las patrullas te dan m\u00e1s espacio y no se te cierran'; } },
+  { id: 'copiloto', name: 'COPILOTO', cat: 'utility', max: 2,
+    eff: function (l) { return 'Los avisos llegan ' + (l * 40) + '% antes \u00b7 el carril bueno brilla'; } },
+  { id: 'salto', name: 'SALTO LARGO', cat: 'utility', max: 2,
+    eff: function (l) { return 'Vuelas m\u00e1s lejos \u00b7 el oro del aire vale doble'; } }
 ];
-function upgById(id) {
-  for (var i = 0; i < UPGRADES.length; i++) if (UPGRADES[i].id === id) return UPGRADES[i];
+function cardById(id) {
+  for (var i = 0; i < CARD_POOL.length; i++) if (CARD_POOL[i].id === id) return CARD_POOL[i];
   return null;
 }
-/* base * 1.6^level, to the nearest 10 */
-function upgCost(u, level) {
-  if (level >= u.max) return 0;
-  return Math.round(u.base * Math.pow(1.6, level) / 10) * 10;
-}
-function loadUpgrades() {
-  var o = {}, i, u;
-  var raw = lsGet(UPG_KEY), p = null;
+
+/* ---------------------------------------------------------------------------
+   THE XP CURVE
+   Cumulative, and it escalates, so the first run of a session showers cards
+   and the sixth is still handing them out but has to be earned.
+     level N needs  XP_BASE * N^XP_POW  coins, all-time, this session
+   Measured against the real course, which is a far richer one than the
+   ninety-second version this replaced - so the base is nothing like the 70 a
+   300-coin run wanted. A clean run banks ~750 XP (roughly 550 coins plus the
+   CHUY bonus) and a decent human run ~620, and both are three level-ups on
+   their own; six of them land at twelve to fourteen cards. Take the paying
+   contracts every time and it runs a little hotter than that, which is what
+   the contract is for. Play badly and you still level, just slower.
+     level 1 at 135 XP, 2 at 342, 3 at 578, 5 at 1104, 10 at 2965, 15 at 5063
+   --------------------------------------------------------------------------- */
+var XP_BASE = 135, XP_POW = 1.34;
+function xpNeed(n) { return Math.round(XP_BASE * Math.pow(Math.max(1, n), XP_POW)); }
+
+var CARDS_KEY = 'rr_cards_v1';
+var DECK = { xp: 0, level: 0, deck: {} };
+function loadDeck() {
+  var out = { xp: 0, level: 0, deck: {} };
+  var raw = ssGet(CARDS_KEY), p = null;
   try { p = raw ? JSON.parse(raw) : null; } catch (e) { p = null; }
-  for (i = 0; i < UPGRADES.length; i++) {
-    u = UPGRADES[i];
-    var v = (p && typeof p === 'object') ? (p[u.id] | 0) : 0;
-    o[u.id] = clamp(isFinite(v) ? v : 0, 0, u.max);
+  if (p && typeof p === 'object') {
+    var x = +p.xp; if (isFinite(x) && x > 0) out.xp = Math.round(x);
+    var l = p.level | 0; if (isFinite(l) && l > 0) out.level = Math.min(99, l);
+    if (p.deck && typeof p.deck === 'object') {
+      for (var i = 0; i < CARD_POOL.length; i++) {
+        var C = CARD_POOL[i], v = p.deck[C.id] | 0;
+        if (isFinite(v) && v > 0) out.deck[C.id] = clamp(v, 0, C.max);
+      }
+    }
   }
+  return out;
+}
+function saveDeck() {
+  try { ssSet(CARDS_KEY, JSON.stringify({ xp: DECK.xp, level: DECK.level, deck: DECK.deck })); }
+  catch (e) { }
+}
+function resetDeck() {
+  DECK = { xp: 0, level: 0, deck: {} };
+  ssDel(CARDS_KEY);
+  LVL.pending = 0;
+  applyMods();
+  renderDeckChips();
+  updateXpHud();
+  return true;
+}
+function deckLevel(id) { return DECK.deck[id] | 0; }
+function deckSize() {
+  var n = 0;
+  for (var i = 0; i < CARD_POOL.length; i++) n += deckLevel(CARD_POOL[i].id);
+  return n;
+}
+/* every card id -> level, zero-filled, which is what applyMods() reads */
+function deckLevels() {
+  var o = {};
+  for (var i = 0; i < CARD_POOL.length; i++) o[CARD_POOL[i].id] = deckLevel(CARD_POOL[i].id);
   return o;
 }
-function saveUpgrades(o) {
-  try { lsSet(UPG_KEY, JSON.stringify(o)); } catch (e) { }
+
+/* ---- XP in ---------------------------------------------------------------
+   Coins call this DURING the run (so the level-up lands where the player
+   earned it) and the end-of-run bonuses call it once at the checkpoint. It
+   never opens the draft itself: it only raises LVL.pending, and the frame
+   loop decides when it is safe to freeze. */
+function addXp(n) {
+  n = Math.round(+n || 0);
+  if (n <= 0) return 0;
+  DECK.xp += n;
+  GAME.xpRun += n;
+  var gained = 0, guard = 0;
+  while (DECK.level < 99 && DECK.xp >= xpNeed(DECK.level + 1) && guard++ < 40) {
+    DECK.level++; gained++;
+  }
+  if (gained) LVL.pending += gained;
+  saveDeck();
+  updateXpHud();
+  return gained;
 }
-function upgTreeCost() {
-  var tot = 0;
-  for (var i = 0; i < UPGRADES.length; i++)
-    for (var l = 0; l < UPGRADES[i].max; l++) tot += upgCost(UPGRADES[i], l);
-  return tot;
+
+/* ---------------------------------------------------------------------------
+   THE DRAFT
+   LVL.active is the freeze: frame() returns before it touches the clock or
+   the physics while it is set, so nothing moves behind the cards and the
+   player is never punished for reading.
+   --------------------------------------------------------------------------- */
+/* closeT is a real countdown in SECONDS, ticked by frame() inside the freeze
+   branch rather than by a window timer. Two reasons: a headless harness that
+   drives the game with __RR.step() never yields to the event loop, so a
+   setTimeout would hang the draft open forever; and a flourish measured in
+   frames is a flourish that can be stepped through and asserted on. */
+var LVL = { active: false, pending: 0, offer: [], sel: 0,
+            closing: false, closeT: 0, draws: 0 };
+var LVL_FLOURISH = 0.43;          // seconds the taken card holds before it closes
+
+/* three distinct cards, never one that is already at its cap */
+function draftOffer(k) {
+  var pool = [], i;
+  for (i = 0; i < CARD_POOL.length; i++) {
+    if (deckLevel(CARD_POOL[i].id) < CARD_POOL[i].max) pool.push(CARD_POOL[i]);
+  }
+  for (i = pool.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1)) % (i + 1);
+    var t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+  return pool.slice(0, Math.min(k, pool.length));
+}
+
+function lvlBurst() {
+  var host = $('lvlBurst');
+  if (!host) return;
+  var html = '', i;
+  for (i = 0; i < 24; i++) {
+    var a = (i / 24) * Math.PI * 2 + Math.random() * 0.3;
+    var r = 120 + Math.random() * 260;
+    html += '<i style="--dx:' + Math.round(Math.cos(a) * r) + 'px;--dy:' +
+            Math.round(Math.sin(a) * r) + 'px;background:' +
+            ['#FFC300', '#FFE277', '#FFF6E8', '#FF7A00'][i % 4] +
+            ';animation-delay:' + (Math.random() * 0.22).toFixed(2) + 's"></i>';
+  }
+  host.innerHTML = html;
+}
+
+function buildDraftCards() {
+  var host = $('lvlCards');
+  if (!host) return;
+  host.innerHTML = '';
+  for (var i = 0; i < LVL.offer.length; i++) {
+    (function (C, idx) {
+      var have = deckLevel(C.id), next = have + 1;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'card3 cat-' + C.cat;
+      b.setAttribute('data-card', C.id);
+
+      var band = document.createElement('div');
+      band.className = 'cBand';
+      band.textContent = CARD_CATS[C.cat] + (have > 0 ? ('  \u00b7  NIVEL ' + next) : '');
+      b.appendChild(band);
+
+      var art = document.createElement('div');
+      art.className = 'cArt';
+      iconInto(art, 96, drawCardIcon, C.id);
+      b.appendChild(art);
+
+      var t = document.createElement('div');
+      t.className = 'cTitle'; t.textContent = C.name;
+      b.appendChild(t);
+
+      var e = document.createElement('div');
+      e.className = 'cEff'; e.textContent = C.eff(next);
+      b.appendChild(e);
+
+      var pips = document.createElement('div');
+      pips.className = 'cPips';
+      for (var p = 0; p < C.max; p++) {
+        var pip = document.createElement('span');
+        pip.className = 'cpip' + (p < next ? ' on' : '');
+        pips.appendChild(pip);
+      }
+      b.appendChild(pips);
+
+      var k = document.createElement('div');
+      k.className = 'cKey'; k.textContent = String(idx + 1);
+      b.appendChild(k);
+
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        unlockAudio();
+        pickCard(idx);
+      }, false);
+      host.appendChild(b);
+    })(LVL.offer[i], i);
+  }
+  markDraftSel();
+}
+function markDraftSel() {
+  var host = $('lvlCards');
+  if (!host) return;
+  for (var i = 0; i < host.children.length; i++) {
+    var el = host.children[i], base = el.className.split(' sel')[0];
+    el.className = base + (i === LVL.sel ? ' sel' : '');
+  }
+}
+
+function openDraft() {
+  if (LVL.active || LVL.pending <= 0) return false;
+  LVL.pending--;
+  LVL.offer = draftOffer(3);
+  var num = $('lvlNum');
+  if (num) num.textContent = String(DECK.level);
+  if (!LVL.offer.length) {
+    /* every card is at its cap - there is nothing left to deal. Say so and
+       carry on rather than freezing the run over an empty hand. */
+    toastCol('\u00a1NIVEL ' + DECK.level + '! MAZO COMPLETO', 'gold');
+    SFX.levelUp();
+    return false;
+  }
+  LVL.active = true;
+  LVL.closing = false;
+  LVL.closeT = 0;
+  LVL.sel = 0;
+  /* the two 3D speech balloons are frozen mid-sentence behind the cards and
+     read as clutter over the NIVEL banner. They are per-frame objects, so
+     hiding them here is enough: the first frame after the draft closes puts
+     whichever of them is still owed back on screen. */
+  if (bubbleMesh) bubbleMesh.visible = false;
+  if (rivalBubble) rivalBubble.visible = false;
+  LVL.draws++;
+  buildDraftCards();
+  lvlBurst();
+  var scr = $('scrLevel');
+  if (scr) scr.className = 'on';
+  SFX.levelUp();
+  updateTouchUI();
+  try { window.setTimeout(updateScrollCues, 0); } catch (e) { }
+  return true;
+}
+
+function closeDraft() {
+  LVL.active = false;
+  LVL.closing = false;
+  LVL.closeT = 0;
+  var scr = $('scrLevel');
+  if (scr) scr.className = '';
+  var host = $('lvlBurst');
+  if (host) host.innerHTML = '';
+  updateTouchUI();
+  /* another level is already waiting: deal it rather than dropping the player
+     back on the road for a tenth of a second in between */
+  if (LVL.pending > 0 && openDraft()) return;
+  if (GAME.state === 'PLAYING') {
+    /* THE GRACE. The run resumes with a beat and a second and a half of
+       invulnerability, so nobody is dealt a card and then dropped straight
+       into the drum they were about to dodge. */
+    GAME.invuln = Math.max(GAME.invuln, 1.5);
+    callout('\u00a1V\u00c1MONOS!', 1.4);
+    SFX.blip();
+  }
+  lastT = 0;                       // the next real frame starts from a clean delta
+}
+
+function pickCard(i) {
+  if (!LVL.active || LVL.closing) return false;
+  var C = LVL.offer[i];
+  if (!C) return false;
+  LVL.closing = true;
+  var have = deckLevel(C.id);
+  DECK.deck[C.id] = Math.min(C.max, have + 1);
+  saveDeck();
+  /* LIVE. The physics reads MODS and MODS is refilled right here, so the card
+     is in effect for the very next frame - not the next run. */
+  applyMods();
+  var lv = deckLevel(C.id);
+  /* the three cards that hand out a RESOURCE rather than a rate have to hand
+     it out now, or taking them at 60% of a run would do nothing at all */
+  if (C.id === 'carga') GAME.shields = Math.max(GAME.shields, MODS.startShields);
+  else if (C.id === 'estampita') GAME.saints = Math.max(GAME.saints, MODS.saints);
+  else if (C.id === 'nitro') { GAME.nitro = Math.min(3, GAME.nitro + 1); updateNitroUI(); }
+  SFX.cardTake();
+  var host = $('lvlCards');
+  if (host) {
+    for (var k = 0; k < host.children.length; k++) {
+      var el = host.children[k], base = el.className.split(' sel')[0];
+      el.className = base + (k === i ? ' taken' : ' drop');
+    }
+  }
+  renderDeckChips();
+  updateXpHud();
+  var sub = $('lvlSub');
+  if (sub) sub.textContent = C.name + '  \u00b7  ' + C.eff(lv);
+  LVL.closeT = LVL_FLOURISH;       // frame() counts it down and calls closeDraft
+  return true;
+}
+
+/* keyboard: 1 / 2 / 3 pick outright, the arrows move the highlight and
+   SPACE or ENTER takes it */
+function draftKey(k, code) {
+  if (!LVL.active) return false;
+  if (k === '1') { pickCard(0); return true; }
+  if (k === '2') { pickCard(1); return true; }
+  if (k === '3') { pickCard(2); return true; }
+  if (k === 'a' || k === 'arrowleft') { LVL.sel = (LVL.sel + LVL.offer.length - 1) % LVL.offer.length; markDraftSel(); return true; }
+  if (k === 'd' || k === 'arrowright') { LVL.sel = (LVL.sel + 1) % LVL.offer.length; markDraftSel(); return true; }
+  if (k === ' ' || code === 'Space' || k === 'enter') { pickCard(LVL.sel); return true; }
+  return false;
+}
+
+/* ---- the deck, drawn as chips on the title and pause cards ---- */
+function renderDeckChips() {
+  var hosts = [$('deckTitle'), $('deckPause')], h, i, j;
+  var have = [];
+  for (i = 0; i < CARD_POOL.length; i++) {
+    var C = CARD_POOL[i], l = deckLevel(C.id);
+    if (l > 0) have.push({ c: C, l: l });
+  }
+  /* a full deck is sixteen chips, and on a phone that wraps to three rows -
+     about a hundred pixels neither a 390 px tall landscape nor a 390 px wide
+     portrait card has spare. Cap it and say how many are not shown; the whole
+     deck is always readable on the pause card, which has room. */
+  var cap = have.length;
+  if ((window.innerHeight || 999) < 480) cap = 8;
+  else if ((window.innerWidth || 999) < 520) cap = 10;
+  var hidden = Math.max(0, have.length - cap);
+  for (h = 0; h < hosts.length; h++) {
+    var host = hosts[h];
+    if (!host) continue;
+    host.innerHTML = '';
+    for (j = 0; j < have.length && j < cap; j++) {
+      var e = document.createElement('div');
+      e.className = 'dchip cat-' + have[j].c.cat;
+      e.title = have[j].c.name + ' \u00b7 ' + have[j].c.eff(have[j].l);
+      var ic = document.createElement('span');
+      ic.className = 'dIco';
+      iconInto(ic, 44, drawCardIcon, have[j].c.id);
+      e.appendChild(ic);
+      var n = document.createElement('b');
+      n.textContent = 'x' + have[j].l;
+      e.appendChild(n);
+      host.appendChild(e);
+    }
+    if (hidden > 0) {
+      var more = document.createElement('div');
+      more.className = 'dchip';
+      more.innerHTML = '<b>+' + hidden + '</b>';
+      host.appendChild(more);
+    }
+  }
+  var empty = $('deckEmpty');
+  if (empty) empty.style.display = have.length ? 'none' : '';
+}
+
+/* ---- the HUD read-out: a level badge and a bar inside the coin pill ---- */
+var XP_HUD = { lvl: -1, pct: -1 };
+function updateXpHud() {
+  var lv = $('xpLvl'), fill = $('xpFill');
+  var lo = DECK.level > 0 ? xpNeed(DECK.level) : 0;
+  var hi = xpNeed(DECK.level + 1);
+  var pct = Math.round(clamp((DECK.xp - lo) / Math.max(1, hi - lo), 0, 1) * 100);
+  if (lv && DECK.level !== XP_HUD.lvl) {
+    var was = XP_HUD.lvl;
+    XP_HUD.lvl = DECK.level;
+    lv.textContent = 'N' + DECK.level;
+    if (was >= 0) { lv.className = ''; void lv.offsetWidth; lv.className = 'up'; }
+  }
+  if (fill && pct !== XP_HUD.pct) { XP_HUD.pct = pct; fill.style.width = pct + '%'; }
+}
+
+/* ===========================================================================
+   16b. MEJORES PUNTAJES  -  a top ten, with names
+
+   localStorage, because a high-score table that died with the tab would not
+   be a high-score table. Everything is wrapped in try/catch and every field
+   is re-validated on the way in: a corrupted or hand-edited row can only ever
+   cost itself, never the whole list.
+
+   Entry: { n name (<=12 chars), s score, t time, g grade, c coins,
+            d date yyyy-mm-dd, k how many cards the deck held }
+   =========================================================================== */
+var SCORES_KEY = 'rr_scores', NAME_KEY = 'rr_lastname';
+var HI_MAX = 10, HI_SHOW = 5;
+var SCORES = [];
+/* the run that has just been played, spliced into the table so the player can
+   see where it lands BEFORE they commit a name to it. Identity, not an index:
+   the list re-sorts under it. */
+var HI = { entry: null, saved: false, allTitle: false, allRes: false,
+           resFit: HI_SHOW, titleFit: HI_SHOW, trace: [] };
+
+function cleanName(s) {
+  s = ('' + (s === undefined || s === null ? '' : s)).replace(/[\r\n\t]/g, ' ');
+  s = s.replace(/\s+/g, ' ').replace(/^ | $/g, '').toUpperCase();
+  return s.slice(0, 12);
+}
+function loadScores() {
+  var out = [], raw = lsGet(SCORES_KEY), p = null, i;
+  try { p = raw ? JSON.parse(raw) : null; } catch (e) { p = null; }
+  if (p instanceof Array) {
+    for (i = 0; i < p.length && out.length < HI_MAX * 2; i++) {
+      var r = p[i];
+      if (!r || typeof r !== 'object') continue;
+      var s = +r.s;
+      if (!isFinite(s) || s < 0) continue;
+      out.push({
+        n: cleanName(r.n) || 'RESCO',
+        s: Math.round(s),
+        t: isFinite(+r.t) ? +r.t : 0,
+        g: (r.g === 'S' || r.g === 'A' || r.g === 'B' || r.g === 'C') ? r.g : 'C',
+        c: Math.max(0, (+r.c) | 0),
+        d: ('' + (r.d || '')).slice(0, 10),
+        k: Math.max(0, (+r.k) | 0)
+      });
+    }
+  }
+  out.sort(function (a, b) { return b.s - a.s; });
+  return out.slice(0, HI_MAX);
+}
+function saveScores() {
+  try { lsSet(SCORES_KEY, JSON.stringify(SCORES)); } catch (e) { }
+}
+function lastName() { return cleanName(lsGet(NAME_KEY)) || ''; }
+/* would this score make the table? An empty slot always qualifies. */
+function scoreQualifies(s) {
+  if (!isFinite(s) || s <= 0) return false;
+  if (SCORES.length < HI_MAX) return true;
+  return s > SCORES[SCORES.length - 1].s;
+}
+/* the list as it would READ right now: the saved rows, plus the run in hand */
+function scoreRows() {
+  var rows = SCORES.slice();
+  if (HI.entry && !HI.saved) {
+    rows.push(HI.entry);
+    rows.sort(function (a, b) { return b.s - a.s; });
+    rows = rows.slice(0, HI_MAX);
+  }
+  return rows;
+}
+function todayStamp() {
+  try { return new Date().toISOString().slice(0, 10); } catch (e) { return ''; }
+}
+function submitScore(name) {
+  if (!HI.entry) return false;
+  var nm = cleanName(name) || 'RESCO';
+  HI.entry.n = nm;
+  lsSet(NAME_KEY, nm);
+  if (!HI.saved) {
+    SCORES.push(HI.entry);
+    SCORES.sort(function (a, b) { return b.s - a.s; });
+    SCORES = SCORES.slice(0, HI_MAX);
+    HI.saved = true;
+    saveScores();
+  } else {
+    saveScores();                       // a rename of a row already in the list
+  }
+  var btn = $('hiSave');
+  if (btn) { btn.className = 'done'; btn.textContent = '\u00a1GUARDADO!'; btn.disabled = true; }
+  var inp = $('hiName');
+  if (inp) { inp.blur(); inp.value = nm; }
+  renderScoreTables();
+  SFX.power();
+  return true;
+}
+function fillScoreTable(el, all, moreBtn, fit) {
+  if (!el) return;
+  var rows = scoreRows();
+  if (fit === undefined || fit === null) fit = HI_SHOW;
+  var hideAll = (fit === -1);
+  var show = all ? HI_MAX : Math.max(0, fit);
+  /* WINDOWED on the new entry rather than always the top: with one row left
+     there is only one row worth showing, and it is the player's own. */
+  var start = 0;
+  var mi = rows.indexOf(HI.entry);
+  if (!all && show > 0 && mi >= 0) start = clamp(mi - Math.floor((show - 1) / 2), 0, Math.max(0, rows.length - show));
+  var html = '', i;
+  for (i = start; i < rows.length && i < start + show; i++) {
+    var r = rows[i];
+    var me = (r === HI.entry) ? ' class="me"' : '';
+    html += '<tr' + me + '><td class="p">' + (i + 1) + '</td>' +
+            '<td class="n">' + escHtml(r.n) + '</td>' +
+            '<td class="t">' + escHtml(r.g) + ' \u00b7 ' + fmtTime(r.t) + '</td>' +
+            '<td class="s">' + r.s.toLocaleString() + '</td></tr>';
+  }
+  el.innerHTML = html;
+  el.style.display = (rows.length && show > 0 && !hideAll) ? '' : 'none';
+  /* The RESULTS card has a one-line fallback ("TU LUGAR #4") for when there is
+     no room for a table at all; the TITLE card has no such line, so for it an
+     empty table means the whole block goes - a lone MEJORES PUNTAJES heading
+     with nothing underneath it is worse than no heading. */
+  var isRes = (el.id === 'hiResTable');
+  var wrap = isRes ? $('hiResWrap') : $('hiTitleWrap');
+  var hd = wrap ? wrap.querySelector('.hiHead') : null;
+  var blank = hideAll || (show <= 0 && !isRes);
+  if (wrap) wrap.style.display = blank ? 'none' : '';
+  if (hd) hd.style.display = (show > 0 && !hideAll) ? '' : 'none';
+  if (isRes) {
+    var rk = $('hiRank');
+    if (rk) {
+      var want = (!hideAll && show === 0 && mi >= 0);
+      rk.className = want ? 'on' : '';
+      if (want) {
+        rk.innerHTML = '<span class="pl">TU LUGAR</span> <b>#' + (mi + 1) + '</b> \u00b7 ' +
+                       escHtml(HI.entry.n) + ' \u00b7 <b>' + HI.entry.s.toLocaleString() + '</b>';
+      }
+    }
+  }
+  var sib = el.parentNode ? el.parentNode.querySelector('.hiEmpty') : null;
+  if (!rows.length && !blank) {
+    if (!sib && el.parentNode) {
+      sib = document.createElement('div');
+      sib.className = 'hiEmpty';
+      sib.textContent = 'A\u00fan no hay puntajes. \u00a1Cruza el puente!';
+      el.parentNode.appendChild(sib);
+    }
+    if (sib) sib.style.display = '';
+  } else if (sib) sib.style.display = 'none';
+  if (moreBtn) {
+    /* the expand link only exists while a TABLE is on screen. Once the fitter
+       has collapsed the block to its one "where you landed" line there is no
+       room for the link as well - and the line is the half worth keeping,
+       since the full ten are always on the title card anyway. */
+    moreBtn.style.display = (!blank && show > 0 && rows.length > show) ? '' : 'none';
+    moreBtn.textContent = all ? 'VER MENOS' : ('VER LOS ' + Math.min(HI_MAX, rows.length));
+  }
+}
+function escHtml(s) {
+  return ('' + s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function renderScoreTables() {
+  fillScoreTable($('hiTitleTable'), HI.allTitle, $('hiTitleMore'), HI.titleFit);
+  fillScoreTable($('hiResTable'), HI.allRes, $('hiResMore'), HI.resFit);
+}
+/* ---------------------------------------------------------------------------
+   THE CARDS MUST FIT.
+   The score table is the one elastic thing on either card, so it is the thing
+   that gives. After a card is laid out, the table is shrunk - five rows,
+   three, one, then a single "your place" line, then nothing at all - until
+   the card is inside the window. MEASURED, not guessed off a media query, so
+   it holds at any viewport the game is ever opened at (1280x720, a 390x844
+   phone and the 844x390 it is actually played in all land on different steps)
+   and the VER LOS 10 link is always still there to get the ten back.
+   --------------------------------------------------------------------------- */
+var HI_FIT_STEPS = [5, 3, 1, 0, -1];
+function fitScoreBlock(scrId, which) {
+  var scr = $(scrId);
+  if (!scr || scr.className.indexOf('on') < 0) return;
+  HI.trace = [];
+  var all = (which === 'res') ? HI.allRes : HI.allTitle;
+  var i, step, fitted = false;
+  for (i = 0; i < HI_FIT_STEPS.length; i++) {
+    step = HI_FIT_STEPS[i];
+    /* the player asked for all ten: give them all ten and let it scroll */
+    if (all && step < HI_MAX) step = HI_MAX;
+    if (which === 'res') HI.resFit = step; else HI.titleFit = step;
+    renderScoreTables();
+    var over = 0;
+    try { over = scr.scrollHeight - scr.clientHeight; } catch (e) { over = 0; }
+    HI.trace.push([which, step, over]);
+    if (over <= 2 || all) { fitted = true; break; }
+  }
+  /* NOTHING FIT. Some cards are taller than a 390 px landscape phone whatever
+     the table does - the title card has been since long before there was a
+     table on it - and shrinking to nothing buys the player exactly nothing in
+     that case. So give the table back, and let the card scroll like it always
+     has; the bobbing chevron already says it can. */
+  if (!fitted) {
+    if (which === 'res') HI.resFit = 0; else HI.titleFit = 1;
+    renderScoreTables();
+  }
+  updateScrollCues();
+}
+function fitCards() {
+  fitScoreBlock('scrResults', 'res');
+  fitScoreBlock('scrTitle', 'title');
+}
+/* called from showResults: build the run's row, offer the name box if it
+   would land in the ten, and draw both tables with it already in place */
+function offerScoreEntry() {
+  var s = computeScore();
+  HI.saved = false;
+  HI.entry = null;
+  var row = $('nameRow'), inp = $('hiName'), btn = $('hiSave');
+  if (scoreQualifies(s)) {
+    HI.entry = { n: lastName() || 'RESCO', s: s, t: GAME.finishTime, g: GAME.grade,
+                 c: GAME.coins, d: todayStamp(), k: deckSize() };
+    if (row) row.className = 'on';
+    if (inp) inp.value = HI.entry.n === 'RESCO' && !lastName() ? '' : HI.entry.n;
+    if (btn) { btn.className = ''; btn.textContent = 'GUARDAR'; btn.disabled = false; }
+  } else {
+    if (row) row.className = '';
+  }
+  renderScoreTables();
+}
+function bindScoreUI() {
+  var inp = $('hiName'), btn = $('hiSave');
+  if (btn) btn.addEventListener('click', function (ev) {
+    ev.stopPropagation(); unlockAudio();
+    submitScore(inp ? inp.value : '');
+  }, false);
+  if (inp) {
+    /* ENTER submits. The window-level key handler bails out on INPUT targets,
+       so typing a name can never steer, restart or mute the game. */
+    inp.addEventListener('keydown', function (ev) {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') { ev.preventDefault(); submitScore(inp.value); }
+    }, false);
+    inp.addEventListener('input', function () {
+      if (HI.entry && !HI.saved) { HI.entry.n = cleanName(inp.value) || 'RESCO'; renderScoreTables(); }
+    }, false);
+    inp.addEventListener('click', function (ev) { ev.stopPropagation(); }, false);
+    inp.addEventListener('touchstart', function (ev) { ev.stopPropagation(); }, false);
+  }
+  var a = $('hiTitleMore');
+  if (a) a.addEventListener('click', function (ev) {
+    ev.stopPropagation(); HI.allTitle = !HI.allTitle;
+    if (HI.allTitle) { HI.titleFit = HI_MAX; renderScoreTables(); updateScrollCues(); }
+    else fitScoreBlock('scrTitle', 'title');
+  }, false);
+  var b = $('hiResMore');
+  if (b) b.addEventListener('click', function (ev) {
+    ev.stopPropagation(); HI.allRes = !HI.allRes;
+    if (HI.allRes) { HI.resFit = HI_MAX; renderScoreTables(); updateScrollCues(); }
+    else fitScoreBlock('scrResults', 'res');
+  }, false);
 }
 
 /* ---------------------------------------------------------------------------
    MODS  -  the single object the physics reads.
-   Filled by applyMods() at the top of resetRun() and NEVER written to while
-   a run is in progress. Everything is expressed as a plain multiplier or an
-   additive term so a stock run is exactly MODS = the identity values.
+   Filled by applyMods() at the top of every run AND the instant a card is
+   taken mid-run, and written from nowhere else. Everything is a plain
+   multiplier or an additive term, so an empty deck is exactly the identity
+   values and a stock run is byte-for-byte the run it always was.
+   Nothing in here can reach the course generator: a card changes the VAN.
    --------------------------------------------------------------------------- */
 var MODS = {
   vmax: 1,            // multiplies the self-powered speed cap AND the ceilings
+  accel: 1,           // multiplies CFG.ACCEL / ACCEL_COAST
   boostTime: 0,       // extra seconds of turbo per pad
+  boostKick: 1,       // multiplies CFG.BOOST_KICK
   laneTime: 1,        // multiplies CFG.LANE_TIME
   magnet: 0,          // passive coin pull radius, in LANES
   hitKeep: 0.64,      // speed multiplier kept through an impact
-  startShield: false,
-  nitroChance: 0,     // chance of one extra canister on the course
+  startShields: 0,    // ESCUDOs in hand at the line
+  saints: 0,          // hits the dashboard saint cancels outright
+  startNitro: 0,      // NITRO charges in hand at the line
+  nitroTwice: false,  // twice as many canisters on the course
+  coinValue: 1,       // what a coin is worth in XP and in points
   streakX2: 8, streakX3: 20,
-  claxon: false, luces: false, calcas: false,
+  claxon: false,      // the air horn: La Cucaracha + it shifts traffic
+  placas: false,      // patrol cars keep their distance
+  copiloto: 0,        // earlier telegraphing + the safe lane glows
+  salto: 0,           // longer flights, double gold in the air
+  luces: false, calcas: false,
   levels: null
 };
 function applyMods() {
-  var L = loadUpgrades();
+  var L = deckLevels();
   MODS.levels = L;
-  MODS.vmax = 1 + L.motor * 0.03;
-  MODS.boostTime = L.turbo * 0.2;
-  MODS.laneTime = Math.pow(0.92, L.susp);
-  MODS.magnet = L.iman * 0.3;
-  MODS.hitKeep = Math.min(0.86, CFG.HIT_LOSS + L.blindaje * 0.04);
-  MODS.startShield = L.escudo > 0;
-  MODS.nitroChance = L.nitroX * 0.12;
-  MODS.streakX2 = Math.max(3, STREAK_X2 - L.racha);
-  MODS.streakX3 = Math.max(6, STREAK_X3 - L.racha * 2);
-  MODS.claxon = L.claxon > 0;
-  MODS.luces = L.luces > 0;
-  MODS.calcas = L.calcas > 0;
+  MODS.vmax         = 1 + L.motor * 0.06;
+  MODS.laneTime     = Math.pow(0.88, L.susp);
+  MODS.accel        = 1 + L.caja * 0.15;
+  MODS.boostTime    = L.turbo * 0.35;
+  MODS.boostKick    = 1 + L.gasolina * 0.15;
+  MODS.startNitro   = L.nitro > 0 ? 1 : 0;
+  MODS.nitroTwice   = L.nitro >= 2;
+  MODS.hitKeep      = Math.min(0.92, CFG.HIT_LOSS + L.llantas * 0.06);
+  MODS.startShields = L.carga;
+  MODS.saints       = L.estampita;
+  MODS.coinValue    = 1 + L.factura * 0.40;
+  MODS.magnet       = L.iman * 0.35;
+  MODS.streakX2     = Math.max(3, Math.round(STREAK_X2 * Math.pow(0.70, L.racha)));
+  MODS.streakX3     = Math.max(5, Math.round(STREAK_X3 * Math.pow(0.70, L.racha)));
+  MODS.claxon       = L.claxon > 0;
+  MODS.placas       = L.placas > 0;
+  MODS.copiloto     = L.copiloto;
+  MODS.salto        = L.salto;
+  MODS.luces = false; MODS.calcas = false;
   /* CARGA PESADA is the only contract that touches the speed ceiling, and it
      is folded in here so there is exactly ONE number the physics reads. */
   if (CONTRACT && CONTRACT.id === 'pesada') MODS.vmax *= 0.90;
   applyCosmetics();
   return MODS;
+}
+/* what a coin is worth RIGHT NOW, contract included. CARGA FRAGIL pays double
+   for as long as the load is intact and stops the moment it is not, which is
+   the contract stated as a live rate instead of an end-of-run audit. */
+function contractLiveMult() {
+  if (!CONTRACT) return 1;
+  if (CONTRACT.id === 'fragil') return CRUN.voided ? 1 : 2;
+  if (CONTRACT.id === 'urgente') return 1;
+  return CONTRACT.mult || 1;
 }
 /* the speed the van can hold under its own power here, WITH its upgrades.
    speedCapAt() itself is left alone: the course generator and the reachability
@@ -12782,11 +13912,19 @@ var PENDING_SEED = 0;
 /* run-scoped contract state; wiped by resetRun() */
 var CRUN = { voided: false, ok: false, par: 0, banked: 0, mult: 1, bonus: 0, rivalBonus: 0 };
 
-/* ENTREGA URGENTE's par. A measured clean stock run of the course is ~56 s;
-   the par is that plus a little over 10%, and it tightens in exact proportion
-   to the MOTOR level so the upgrade never buys the contract for free. */
-var PAR_BASE = 62;
-function contractPar() { return PAR_BASE / Math.max(0.5, MODS.vmax); }
+/* ENTREGA URGENTE's par. It used to be a FIXED 62 s, which stopped being
+   reachable the moment the course was first stretched - the contract was
+   simply unwinnable. It is now DERIVED: rivalTimeFor(1) integrates the whole
+   course at exactly the speed cap, which is what a clean run that never
+   boosts takes, and the par is that less 4% - so following the gold (i.e.
+   taking the boost chains) is what wins it. It scales with COURSE_SCALE for
+   free, and still tightens with MOTOR so no card can buy it outright. */
+var PAR_BASE = 0;
+function solvePar() { return Math.round(rivalTimeFor(1.0) * 0.96); }
+function contractPar() {
+  if (!PAR_BASE) PAR_BASE = solvePar();       // the picker can ask before a run exists
+  return PAR_BASE / Math.max(0.5, MODS.vmax);
+}
 
 /* three offers, seeded off the run seed */
 function offerContracts(seed) {
@@ -12811,9 +13949,11 @@ function offerContracts(seed) {
 function applyContractToCourse(seed) {
   var r = makeRNG((seed ^ 0x1b873593) >>> 0), i, k;
 
-  /* NITRO EXTRA (upgrade) and CONTRABANDO (contract) both add canisters. */
+  /* NITRO DE RESERVA at level 2 doubles the canisters on the course (three
+     become six); CONTRABANDO adds two more on top. Canisters are PICKUPS, not
+     hazards - they are not in obstaclePlan and the solver never sees them. */
   var extra = 0;
-  if (MODS.nitroChance > 0 && r() < MODS.nitroChance) extra++;
+  if (MODS.nitroTwice) extra += 3;
   if (CONTRACT && CONTRACT.id === 'contrabando') extra += 2;
   for (i = 0; i < extra; i++) {
     var slot = SPARSE_RANGES.length
@@ -12879,9 +14019,13 @@ function applyContractToCourse(seed) {
 }
 
 /* ---------------------------------------------------------------------------
-   BANKING
-   Coins are only ever worth anything if the van reaches U.S. Customs. The
-   whole point of the wallet is that a crash-out costs the run's takings.
+   XP AT THE LINE
+   Coins feed the bar AS THEY ARE COLLECTED - that is what makes a level-up
+   land where the player earned it, and it is why the contract multiplier is a
+   LIVE rate (contractLiveMult) rather than an end-of-run audit. All that is
+   left for the checkpoint is the two lump bonuses: the ENTREGA URGENTE payout
+   and beating CHUY. Both go in here, and any level they buy is dealt on top
+   of the results card.
    --------------------------------------------------------------------------- */
 function evaluateContract() {
   CRUN.mult = 1; CRUN.bonus = 0; CRUN.ok = false;
@@ -12900,17 +14044,10 @@ function evaluateContract() {
 function bankRun() {
   evaluateContract();
   CRUN.rivalBonus = (CFG.RIVAL && RIVAL.beaten) ? 200 : 0;
-  var got = Math.round(GAME.coins * CRUN.mult) + CRUN.bonus + CRUN.rivalBonus;
-  CRUN.banked = Math.max(0, got);
-  var w = loadWallet() + CRUN.banked;
-  saveWallet(w);
-  updateWalletUI();
+  var extra = Math.max(0, CRUN.bonus + CRUN.rivalBonus);
+  if (extra > 0) addXp(extra);
+  CRUN.banked = Math.round(GAME.xpRun);      // everything this run put in the bar
   return CRUN.banked;
-}
-function updateWalletUI() {
-  var w = loadWallet(), el;
-  el = $('walletTitle'); if (el) el.textContent = w.toLocaleString();
-  el = $('walletShop'); if (el) el.textContent = w.toLocaleString();
 }
 
 /* ---------------------------------------------------------------------------
@@ -12932,30 +14069,14 @@ function rr(g, x, y, w, h, r) {
   g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
   g.closePath();
 }
-function drawWrenchIcon(g, S) {
-  var u = S / 64;
-  g.clearRect(0, 0, S, S);
-  g.save();
-  g.translate(S * 0.5, S * 0.5); g.rotate(-0.7); g.translate(-S * 0.5, -S * 0.5);
-  g.fillStyle = '#c9ced6';
-  g.beginPath();
-  g.arc(20 * u, 20 * u, 13 * u, 0.6, 5.0);
-  g.lineTo(46 * u, 46 * u);
-  g.lineTo(54 * u, 54 * u);
-  g.lineTo(46 * u, 58 * u);
-  g.lineTo(38 * u, 50 * u);
-  g.closePath();
-  g.fill(); ink(g, 4 * u);
-  g.globalCompositeOperation = 'destination-out';
-  g.beginPath(); g.arc(20 * u, 20 * u, 6.5 * u, 0, Math.PI * 2); g.fill();
-  g.globalCompositeOperation = 'source-over';
-  g.beginPath(); g.arc(20 * u, 20 * u, 6.5 * u, 0, Math.PI * 2); ink(g, 3.4 * u);
-  g.restore();
-}
-function drawUpgIcon(g, S, id) {
+/* ---------------------------------------------------------------------------
+   THE SIXTEEN CARD ICONS. All canvas, no image files, same vocabulary as the
+   rest of the UI: flat fills, one heavy ink stroke, no gradients.
+   --------------------------------------------------------------------------- */
+function drawCardIcon(g, S, id) {
   var u = S / 64, i;
   g.fillStyle = '#FFF6E8'; g.fillRect(0, 0, S, S);
-  if (id === 'motor') {
+  if (id === 'motor') {                       // engine block + a spark
     g.fillStyle = '#8d939b'; rr(g, 12 * u, 26 * u, 40 * u, 26 * u, 4 * u); g.fill(); ink(g, 3.5 * u);
     g.fillStyle = '#c25400'; rr(g, 20 * u, 12 * u, 10 * u, 16 * u, 2 * u); g.fill(); ink(g, 3 * u);
     g.fillStyle = '#ff7a00'; rr(g, 36 * u, 16 * u, 10 * u, 12 * u, 2 * u); g.fill(); ink(g, 3 * u);
@@ -12963,7 +14084,28 @@ function drawUpgIcon(g, S, id) {
     g.beginPath(); g.moveTo(44 * u, 6 * u); g.lineTo(52 * u, 6 * u); g.lineTo(47 * u, 14 * u);
     g.lineTo(54 * u, 14 * u); g.lineTo(42 * u, 26 * u); g.lineTo(46 * u, 16 * u); g.lineTo(40 * u, 16 * u);
     g.closePath(); g.fill(); ink(g, 2.6 * u);
-  } else if (id === 'turbo') {
+  } else if (id === 'susp') {                 // a coil spring between two plates
+    g.strokeStyle = '#14181f'; g.lineWidth = 5 * u;
+    g.beginPath(); g.moveTo(18 * u, 8 * u);
+    for (i = 0; i < 5; i++) { g.lineTo(46 * u, (12 + i * 9) * u); g.lineTo(18 * u, (17 + i * 9) * u); }
+    g.stroke();
+    g.strokeStyle = '#22D65B'; g.lineWidth = 2.6 * u; g.stroke();
+    g.fillStyle = '#8d939b'; g.fillRect(12 * u, 2 * u, 40 * u, 7 * u); ink(g, 3 * u);
+    g.fillStyle = '#8d939b'; g.fillRect(12 * u, 55 * u, 40 * u, 7 * u); ink(g, 3 * u);
+  } else if (id === 'caja') {                 // a crate floating on two arrows
+    g.fillStyle = '#c9a06a'; rr(g, 14 * u, 10 * u, 36 * u, 26 * u, 3 * u); g.fill(); ink(g, 3.4 * u);
+    g.strokeStyle = '#8a7550'; g.lineWidth = 3 * u;
+    g.beginPath(); g.moveTo(32 * u, 10 * u); g.lineTo(32 * u, 36 * u); g.stroke();
+    g.fillStyle = '#22D65B';
+    for (i = -1; i <= 1; i += 2) {
+      g.beginPath();
+      g.moveTo((32 + i * 12) * u, 60 * u); g.lineTo((32 + i * 12) * u - 7 * u, 48 * u);
+      g.lineTo((32 + i * 12) * u - 3 * u, 48 * u); g.lineTo((32 + i * 12) * u - 3 * u, 40 * u);
+      g.lineTo((32 + i * 12) * u + 3 * u, 40 * u); g.lineTo((32 + i * 12) * u + 3 * u, 48 * u);
+      g.lineTo((32 + i * 12) * u + 7 * u, 48 * u);
+      g.closePath(); g.fill(); ink(g, 2.4 * u);
+    }
+  } else if (id === 'turbo') {                // three boost chevrons
     for (i = 0; i < 3; i++) {
       var y = 12 * u + i * 15 * u;
       g.beginPath();
@@ -12972,39 +14114,21 @@ function drawUpgIcon(g, S, id) {
       g.closePath();
       g.fillStyle = ['#C6FFDC', '#8CF7B4', '#22D65B'][i]; g.fill(); ink(g, 2.6 * u);
     }
-  } else if (id === 'susp') {
-    g.strokeStyle = '#14181f'; g.lineWidth = 5 * u;
-    g.beginPath(); g.moveTo(18 * u, 8 * u);
-    for (i = 0; i < 5; i++) { g.lineTo(46 * u, (12 + i * 9) * u); g.lineTo(18 * u, (17 + i * 9) * u); }
-    g.stroke();
-    g.strokeStyle = '#1E5BFF'; g.lineWidth = 2.6 * u; g.stroke();
-    g.fillStyle = '#8d939b'; g.fillRect(12 * u, 2 * u, 40 * u, 7 * u); ink(g, 3 * u);
-    g.fillStyle = '#8d939b'; g.fillRect(12 * u, 55 * u, 40 * u, 7 * u); ink(g, 3 * u);
-  } else if (id === 'iman') {
-    g.fillStyle = '#2f7fff';
-    g.beginPath(); g.arc(32 * u, 34 * u, 20 * u, Math.PI, 0); g.lineTo(44 * u, 34 * u);
-    g.arc(32 * u, 34 * u, 12 * u, 0, Math.PI, true); g.closePath(); g.fill(); ink(g, 3.4 * u);
-    g.fillStyle = '#e9eef5';
-    g.fillRect(12 * u, 34 * u, 8 * u, 14 * u); ink(g, 3 * u);
-    g.fillStyle = '#e9eef5';
-    g.fillRect(44 * u, 34 * u, 8 * u, 14 * u); ink(g, 3 * u);
-  } else if (id === 'blindaje') {
+  } else if (id === 'gasolina') {             // a jerry can with a flame
+    g.fillStyle = '#0E7A3C'; rr(g, 14 * u, 18 * u, 30 * u, 36 * u, 4 * u); g.fill(); ink(g, 3.4 * u);
+    g.fillStyle = '#0a4f27'; g.fillRect(20 * u, 26 * u, 18 * u, 5 * u);
+    g.fillStyle = '#1a1d22'; g.fillRect(22 * u, 10 * u, 9 * u, 10 * u); ink(g, 2.8 * u);
     g.fillStyle = '#8d939b';
-    g.beginPath(); g.moveTo(32 * u, 6 * u); g.lineTo(54 * u, 16 * u); g.lineTo(54 * u, 34 * u);
-    g.quadraticCurveTo(54 * u, 52 * u, 32 * u, 60 * u);
-    g.quadraticCurveTo(10 * u, 52 * u, 10 * u, 34 * u); g.lineTo(10 * u, 16 * u);
-    g.closePath(); g.fill(); ink(g, 3.6 * u);
-    g.fillStyle = '#c25400';
-    g.beginPath(); g.moveTo(32 * u, 16 * u); g.lineTo(42 * u, 32 * u); g.lineTo(32 * u, 30 * u);
-    g.lineTo(24 * u, 44 * u); g.lineTo(28 * u, 30 * u); g.lineTo(20 * u, 30 * u);
+    g.beginPath(); g.moveTo(42 * u, 22 * u); g.lineTo(52 * u, 16 * u); g.lineTo(54 * u, 21 * u);
+    g.lineTo(45 * u, 27 * u); g.closePath(); g.fill(); ink(g, 2.4 * u);
+    g.fillStyle = '#FF7A00';
+    g.beginPath(); g.moveTo(50 * u, 30 * u);
+    g.bezierCurveTo(59 * u, 38 * u, 55 * u, 48 * u, 50 * u, 52 * u);
+    g.bezierCurveTo(45 * u, 48 * u, 41 * u, 38 * u, 50 * u, 30 * u);
     g.closePath(); g.fill(); ink(g, 2.4 * u);
-  } else if (id === 'escudo') {
-    g.fillStyle = 'rgba(111,180,255,0.55)';
-    g.beginPath(); g.arc(32 * u, 32 * u, 24 * u, 0, Math.PI * 2); g.fill(); ink(g, 3.6 * u);
-    g.fillStyle = '#2f7fff'; rr(g, 24 * u, 18 * u, 16 * u, 28 * u, 3 * u); g.fill(); ink(g, 3 * u);
-    g.fillStyle = '#e9eef5';
-    g.fillRect(27 * u, 30 * u, 10 * u, 4 * u); g.fillRect(30 * u, 25 * u, 4 * u, 14 * u);
-  } else if (id === 'nitroX') {
+    g.fillStyle = '#FFE277';
+    g.beginPath(); g.arc(50 * u, 45 * u, 4 * u, 0, Math.PI * 2); g.fill();
+  } else if (id === 'nitro') {                // the red canister
     g.fillStyle = '#d8261a'; rr(g, 20 * u, 16 * u, 24 * u, 40 * u, 5 * u); g.fill(); ink(g, 3.4 * u);
     g.fillStyle = '#1a1d22'; g.fillRect(28 * u, 6 * u, 8 * u, 12 * u); ink(g, 3 * u);
     g.fillStyle = '#FF7A00';
@@ -13014,7 +14138,58 @@ function drawUpgIcon(g, S, id) {
     g.closePath(); g.fill();
     g.fillStyle = '#FFE277';
     g.beginPath(); g.arc(32 * u, 41 * u, 4.5 * u, 0, Math.PI * 2); g.fill();
-  } else if (id === 'racha') {
+  } else if (id === 'llantas') {              // a tyre, tread out
+    g.fillStyle = '#23262c';
+    g.beginPath(); g.arc(32 * u, 32 * u, 24 * u, 0, Math.PI * 2); g.fill(); ink(g, 3.6 * u);
+    g.fillStyle = '#9aa3ad';
+    g.beginPath(); g.arc(32 * u, 32 * u, 11 * u, 0, Math.PI * 2); g.fill(); ink(g, 3 * u);
+    g.fillStyle = '#6f7883';
+    g.beginPath(); g.arc(32 * u, 32 * u, 4.5 * u, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#14181f';
+    for (i = 0; i < 8; i++) {
+      var a = (i / 8) * Math.PI * 2;
+      g.save(); g.translate(32 * u + Math.cos(a) * 18.5 * u, 32 * u + Math.sin(a) * 18.5 * u);
+      g.rotate(a); g.fillRect(-3 * u, -2.6 * u, 6 * u, 5.2 * u); g.restore();
+    }
+  } else if (id === 'carga') {                // a strapped crate inside a bubble
+    g.fillStyle = 'rgba(111,180,255,0.55)';
+    g.beginPath(); g.arc(32 * u, 32 * u, 25 * u, 0, Math.PI * 2); g.fill(); ink(g, 3.6 * u);
+    g.fillStyle = '#c9a06a'; rr(g, 19 * u, 22 * u, 26 * u, 22 * u, 3 * u); g.fill(); ink(g, 3 * u);
+    g.fillStyle = '#2f7fff'; g.fillRect(29 * u, 22 * u, 6 * u, 22 * u);
+    g.fillStyle = '#2f7fff'; g.fillRect(19 * u, 30 * u, 26 * u, 6 * u);
+    g.strokeStyle = '#14181f'; g.lineWidth = 2.4 * u; g.strokeRect(29 * u, 22 * u, 6 * u, 22 * u);
+  } else if (id === 'estampita') {            // the dashboard saint's little card
+    g.fillStyle = '#FFF6E8'; rr(g, 17 * u, 10 * u, 30 * u, 44 * u, 4 * u); g.fill(); ink(g, 3.4 * u);
+    g.fillStyle = '#1E5BFF'; rr(g, 21 * u, 14 * u, 22 * u, 36 * u, 3 * u); g.fill();
+    g.fillStyle = '#FFE277';                  // the halo
+    g.beginPath(); g.arc(32 * u, 25 * u, 9 * u, 0, Math.PI * 2); g.fill(); ink(g, 2.2 * u);
+    g.fillStyle = '#b5793f';
+    g.beginPath(); g.arc(32 * u, 25 * u, 5.4 * u, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#f2ede1';
+    g.beginPath(); g.moveTo(32 * u, 31 * u); g.lineTo(41 * u, 48 * u); g.lineTo(23 * u, 48 * u);
+    g.closePath(); g.fill(); ink(g, 2.2 * u);
+    g.strokeStyle = '#D8342C'; g.lineWidth = 3 * u;
+    g.beginPath(); g.moveTo(32 * u, 54 * u); g.lineTo(32 * u, 62 * u); g.stroke();
+  } else if (id === 'factura') {              // two invoices
+    g.fillStyle = '#efe7d4'; rr(g, 10 * u, 14 * u, 28 * u, 38 * u, 3 * u); g.fill(); ink(g, 3.2 * u);
+    g.fillStyle = '#FFF6E8'; rr(g, 24 * u, 10 * u, 28 * u, 38 * u, 3 * u); g.fill(); ink(g, 3.2 * u);
+    g.fillStyle = '#8a7550';
+    for (i = 0; i < 4; i++) g.fillRect(29 * u, (17 + i * 7) * u, 18 * u, 3 * u);
+    g.fillStyle = '#B37E00';
+    g.beginPath(); g.arc(45 * u, 44 * u, 9 * u, 0, Math.PI * 2); g.fill(); ink(g, 2.8 * u);
+    g.fillStyle = '#FFC300';
+    g.beginPath(); g.arc(45 * u, 44 * u, 5.6 * u, 0, Math.PI * 2); g.fill();
+  } else if (id === 'iman') {                 // a horseshoe magnet
+    g.fillStyle = '#2f7fff';
+    g.beginPath(); g.arc(32 * u, 34 * u, 20 * u, Math.PI, 0); g.lineTo(44 * u, 34 * u);
+    g.arc(32 * u, 34 * u, 12 * u, 0, Math.PI, true); g.closePath(); g.fill(); ink(g, 3.4 * u);
+    g.fillStyle = '#e9eef5';
+    g.fillRect(12 * u, 34 * u, 8 * u, 14 * u); ink(g, 3 * u);
+    g.fillStyle = '#e9eef5';
+    g.fillRect(44 * u, 34 * u, 8 * u, 14 * u); ink(g, 3 * u);
+    g.fillStyle = '#FFC300';
+    g.beginPath(); g.arc(32 * u, 12 * u, 5 * u, 0, Math.PI * 2); g.fill(); ink(g, 2.2 * u);
+  } else if (id === 'racha') {                // three coins climbing, x3
     for (i = 0; i < 3; i++) {
       g.beginPath(); g.arc((18 + i * 14) * u, (40 - i * 8) * u, 11 * u, 0, Math.PI * 2);
       g.fillStyle = '#FFC300'; g.fill(); ink(g, 3 * u);
@@ -13023,37 +14198,57 @@ function drawUpgIcon(g, S, id) {
     g.font = 'bold ' + (20 * u) + 'px "Arial Black", Impact, sans-serif';
     g.strokeStyle = '#14181f'; g.lineWidth = 5 * u;
     g.strokeText('x3', 44 * u, 22 * u); g.fillStyle = '#fff'; g.fillText('x3', 44 * u, 22 * u);
-  } else if (id === 'claxon') {
+  } else if (id === 'claxon') {               // an air horn shoving a car aside
     g.fillStyle = '#c25400';
-    g.beginPath(); g.moveTo(12 * u, 26 * u); g.lineTo(30 * u, 26 * u); g.lineTo(52 * u, 12 * u);
-    g.lineTo(52 * u, 52 * u); g.lineTo(30 * u, 38 * u); g.lineTo(12 * u, 38 * u);
+    g.beginPath(); g.moveTo(8 * u, 22 * u); g.lineTo(24 * u, 22 * u); g.lineTo(42 * u, 10 * u);
+    g.lineTo(42 * u, 46 * u); g.lineTo(24 * u, 34 * u); g.lineTo(8 * u, 34 * u);
     g.closePath(); g.fill(); ink(g, 3.4 * u);
     g.strokeStyle = '#1E5BFF'; g.lineWidth = 3.4 * u;
     for (i = 1; i <= 2; i++) {
-      g.beginPath(); g.arc(52 * u, 32 * u, (5 + i * 5) * u, -0.7, 0.7); g.stroke();
+      g.beginPath(); g.arc(42 * u, 28 * u, (5 + i * 6) * u, -0.75, 0.75); g.stroke();
     }
-  } else if (id === 'luces') {
-    g.fillStyle = '#2b3038'; rr(g, 8 * u, 26 * u, 48 * u, 14 * u, 4 * u); g.fill(); ink(g, 3.4 * u);
-    for (i = 0; i < 3; i++) {
-      g.fillStyle = ['#FFC300', '#FF7A00', '#FFC300'][i];
-      rr(g, (12 + i * 15) * u, 29 * u, 11 * u, 8 * u, 2 * u); g.fill(); ink(g, 2.2 * u);
-    }
-    g.strokeStyle = '#FFD75E'; g.lineWidth = 3 * u;
-    g.beginPath(); g.moveTo(16 * u, 22 * u); g.lineTo(12 * u, 12 * u); g.stroke();
-    g.beginPath(); g.moveTo(48 * u, 22 * u); g.lineTo(52 * u, 12 * u); g.stroke();
-  } else if (id === 'calcas') {
-    g.fillStyle = '#0e7a3c'; g.fillRect(8 * u, 14 * u, 8 * u, 16 * u);
-    g.fillStyle = '#ffffff'; g.fillRect(16 * u, 14 * u, 8 * u, 16 * u);
-    g.fillStyle = '#d42a2a'; g.fillRect(24 * u, 14 * u, 8 * u, 16 * u);
-    g.strokeStyle = '#14181f'; g.lineWidth = 3 * u; g.strokeRect(8 * u, 14 * u, 24 * u, 16 * u);
-    for (i = 0; i < 5; i++) {
-      g.fillStyle = (i % 2 === 0) ? '#d42a2a' : '#ffffff';
-      g.fillRect(32 * u, (34 + i * 3.4) * u, 24 * u, 3.6 * u);
-    }
-    g.fillStyle = '#2a3b8f'; g.fillRect(32 * u, 34 * u, 10 * u, 9 * u);
-    g.strokeStyle = '#14181f'; g.lineWidth = 3 * u; g.strokeRect(32 * u, 34 * u, 24 * u, 17 * u);
+    g.fillStyle = '#8d939b'; rr(g, 16 * u, 48 * u, 20 * u, 12 * u, 3 * u); g.fill(); ink(g, 2.8 * u);
+    g.fillStyle = '#22D65B';
+    g.beginPath(); g.moveTo(58 * u, 54 * u); g.lineTo(44 * u, 47 * u); g.lineTo(44 * u, 61 * u);
+    g.closePath(); g.fill(); ink(g, 2.4 * u);
+  } else if (id === 'placas') {               // a border plate
+    g.fillStyle = '#f2ede1'; rr(g, 8 * u, 18 * u, 48 * u, 28 * u, 4 * u); g.fill(); ink(g, 3.6 * u);
+    g.fillStyle = '#0e7a3c'; g.fillRect(12 * u, 22 * u, 4 * u, 20 * u);
+    g.fillStyle = '#ffffff'; g.fillRect(16 * u, 22 * u, 4 * u, 20 * u);
+    g.fillStyle = '#d42a2a'; g.fillRect(20 * u, 22 * u, 4 * u, 20 * u);
+    g.fillStyle = '#2a3b8f'; g.fillRect(44 * u, 22 * u, 8 * u, 9 * u);
+    for (i = 0; i < 4; i++) { g.fillStyle = (i % 2) ? '#ffffff' : '#d42a2a'; g.fillRect(44 * u, (31 + i * 2.8) * u, 8 * u, 2.8 * u); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = 'bold ' + (15 * u) + 'px "Arial Black", Impact, sans-serif';
+    g.fillStyle = '#14181f'; g.fillText('RR', 34 * u, 32 * u);
+    g.strokeStyle = '#14181f'; g.lineWidth = 3 * u; g.strokeRect(8 * u, 18 * u, 48 * u, 28 * u);
+  } else if (id === 'copiloto') {             // a warning triangle, early
+    g.fillStyle = '#D8342C';
+    g.beginPath(); g.moveTo(32 * u, 8 * u); g.lineTo(58 * u, 50 * u); g.lineTo(6 * u, 50 * u);
+    g.closePath(); g.fill(); ink(g, 3.6 * u);
+    g.fillStyle = '#f5f0e4';
+    g.fillRect(29 * u, 20 * u, 6 * u, 16 * u);
+    g.beginPath(); g.arc(32 * u, 42 * u, 3.6 * u, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#22D65B'; g.lineWidth = 4 * u;
+    g.beginPath(); g.moveTo(10 * u, 58 * u); g.lineTo(54 * u, 58 * u); g.stroke();
+    g.fillStyle = '#22D65B';
+    g.beginPath(); g.moveTo(4 * u, 58 * u); g.lineTo(14 * u, 52 * u); g.lineTo(14 * u, 64 * u);
+    g.closePath(); g.fill();
+  } else if (id === 'salto') {                // a ramp and a long arc over it
+    g.fillStyle = '#cfc3ae';
+    g.beginPath(); g.moveTo(6 * u, 54 * u); g.lineTo(34 * u, 54 * u); g.lineTo(34 * u, 34 * u);
+    g.closePath(); g.fill(); ink(g, 3.4 * u);
+    g.fillStyle = '#e8442a'; g.fillRect(6 * u, 54 * u, 28 * u, 5 * u); ink(g, 2.2 * u);
+    g.strokeStyle = '#14181f'; g.lineWidth = 3.6 * u;
+    g.setLineDash([5 * u, 4 * u]);
+    g.beginPath(); g.moveTo(34 * u, 32 * u);
+    g.quadraticCurveTo(48 * u, 2 * u, 60 * u, 40 * u); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = '#FFC300';
+    g.beginPath(); g.arc(47 * u, 14 * u, 6 * u, 0, Math.PI * 2); g.fill(); ink(g, 2.4 * u);
   }
 }
+
 function drawConIcon(g, S, id) {
   var u = S / 64, i;
   g.fillStyle = '#FFF6E8'; g.fillRect(0, 0, S, S);
@@ -13129,116 +14324,6 @@ function iconInto(host, S, drawer, id) {
   try { host.appendChild(iconCanvas(S, function (g, s) { drawer(g, s, id); })); } catch (e) { }
 }
 
-/* ---------------------------------------------------------------------------
-   THE TALLER RESCO SCREEN
-   --------------------------------------------------------------------------- */
-var SHOP_RETURN = 'scrTitle';
-function openShop(from) {
-  SHOP_RETURN = from || 'scrTitle';
-  buildShop();
-  showScreen('scrShop');
-  updateTouchUI();
-}
-function closeShop() {
-  showScreen(SHOP_RETURN);
-  updateTouchUI();
-}
-function buildShop() {
-  var grid = $('shopGrid');
-  if (!grid) return;
-  var lv = loadUpgrades(), w = loadWallet();
-  grid.innerHTML = '';
-  updateWalletUI();
-  for (var i = 0; i < UPGRADES.length; i++) {
-    (function (u) {
-      var l = lv[u.id] | 0;
-      var maxed = l >= u.max;
-      var cost = upgCost(u, l);
-      var afford = !maxed && w >= cost;
-      var card = document.createElement('div');
-      card.className = 'upg' + (u.cosmetic ? ' cosm' : '') + (maxed ? ' maxed' : '');
-      card.id = 'upg_' + u.id;
-
-      var head = document.createElement('div'); head.className = 'uHead';
-      var ico = document.createElement('div'); ico.className = 'uIco';
-      iconInto(ico, 48, drawUpgIcon, u.id);
-      var nm = document.createElement('div'); nm.className = 'uName'; nm.textContent = u.name;
-      head.appendChild(ico); head.appendChild(nm);
-
-      var ds = document.createElement('div'); ds.className = 'uDesc';
-      ds.textContent = u.desc;
-      /* WHAT IT ACTUALLY BUYS. The card printed only the value you already
-         have, so a level-0 MOTOR read "Tope +0%" - the one number that tells a
-         player nothing at all about whether to spend 300 coins on it. */
-      var nx = document.createElement('div'); nx.className = 'uNext';
-      if (maxed) nx.textContent = u.stat(l);
-      else nx.innerHTML = '<span class="now">' + u.stat(l) + '</span> \u2192 <b>' +
-                          u.stat(l + 1) + '</b>';
-
-      var pips = document.createElement('div'); pips.className = 'uPips';
-      for (var p = 0; p < u.max; p++) {
-        var pip = document.createElement('span');
-        pip.className = 'pip' + (p < l ? ' on' : '');
-        pips.appendChild(pip);
-      }
-
-      var foot = document.createElement('div'); foot.className = 'uFoot';
-      var cst = document.createElement('div'); cst.className = 'uCost';
-      if (maxed) { cst.textContent = 'AL M\u00c1XIMO'; }
-      else {
-        var ci = document.createElement('span'); ci.className = 'coinIcon';
-        var cn = document.createElement('span'); cn.textContent = cost.toLocaleString();
-        cst.appendChild(ci); cst.appendChild(cn);
-      }
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'uBuy' + (maxed ? ' done' : (afford ? '' : ' no'));
-      btn.textContent = maxed ? 'LISTO' : 'COMPRAR';
-      btn.disabled = maxed || !afford;
-      btn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        buyUpgrade(u.id);
-      }, false);
-      foot.appendChild(cst); foot.appendChild(btn);
-
-      card.appendChild(head); card.appendChild(ds); card.appendChild(nx);
-      card.appendChild(pips); card.appendChild(foot);
-      grid.appendChild(card);
-    })(UPGRADES[i]);
-  }
-}
-function buyUpgrade(id) {
-  var u = upgById(id);
-  if (!u) return false;
-  var lv = loadUpgrades();
-  var l = lv[id] | 0;
-  if (l >= u.max) return false;
-  var cost = upgCost(u, l);
-  var w = loadWallet();
-  if (w < cost) return false;
-  saveWallet(w - cost);
-  lv[id] = l + 1;
-  saveUpgrades(lv);
-  SFX.wrench();
-  var st = $('shopStat');
-  if (st) st.textContent = u.name + ': ' + u.stat(l + 1);
-  buildShop();
-  updateScrollCues();
-  var card = $('upg_' + id);
-  if (card) { card.className += ' bought'; }
-  applyCosmetics();
-  return true;
-}
-function resetProgress() {
-  lsDel(WALLET_KEY);
-  lsDel(UPG_KEY);
-  applyCosmetics();
-  buildShop();
-  updateWalletUI();
-  var st = $('shopStat');
-  if (st) st.textContent = 'Progreso reiniciado. \u00a1A empezar de nuevo, compa!';
-  return true;
-}
 
 /* ---------------------------------------------------------------------------
    THE CONTRACT PICKER
@@ -13363,7 +14448,8 @@ var GAME = {
   hits: 0, boosts: 0, dodged: 0, coins: 0, fines: 0, fineCoins: 0,
   // streak / multiplier, near-misses, clean-section bonus, power-ups
   streak: 0, bestStreak: 0, coinPts: 0, nearMiss: 0, perfects: 0,
-  magnet: 0, shield: false, sectionHits: 0, noLines: 0, grade: 'C',
+  magnet: 0, shields: 0, saints: 0, sectionHits: 0, noLines: 0, grade: 'C',
+  xpRun: 0, xpFrac: 0,
   /* the NITRO charge and the SUPER BOOST it buys */
   combo: 0, comboT: 0, bestCombo: 1, skillPts: 0,
   /* the COMBO METER: near-misses, coin pickups and boost chains fill it, and
@@ -13421,10 +14507,43 @@ function requestLane(dir) {
   GAME.laneT = 0;
   SFX.lane();
 }
+/* ---------------------------------------------------------------------------
+   CLAXON DE AIRE
+   Everything ROLLING within CLAXON_REACH ahead of the van and sitting in its
+   line is told to get out of the way, using the same committed, signalled
+   lane change the traffic already does on its own. It can only ever move a
+   vehicle AWAY from the player - a destination nearer the van than where the
+   vehicle already is gets refused - so the road can only get easier and the
+   corridor the solver proved is untouched.
+   --------------------------------------------------------------------------- */
+var CLAXON_REACH = 40;
+function airHornShove() {
+  if (GAME.state !== 'PLAYING') return 0;
+  var moved = 0;
+  for (var i = 0; i < activeObs.length; i++) {
+    var o = activeObs[i], u = o.userData;
+    if (!o.visible || u.hit || u.knocked || u.merge || !MOVERS[u.type]) continue;
+    var dz = u.d - GAME.dist;
+    if (dz < -4 || dz > CLAXON_REACH) continue;
+    if (Math.abs(o.position.x - GAME.x) > u.halfW + 2.4) continue;
+    var to = pickFreeLane(u.lane, u.d, u.halfW, u.halfL, 70);
+    if (to < 0 || to === u.lane) continue;
+    // never TOWARD the player: it has to end up further away than it started
+    if (Math.abs(laneX(to) - GAME.x) <= Math.abs(o.position.x - GAME.x)) continue;
+    u.merge = { t: MERGE_WARN, fromX: o.position.x, to: to, dir: (to > u.lane) ? 1 : -1 };
+    u.mergeUsed = true;
+    moved++;
+  }
+  if (moved) {
+    toastCol('\u00a1\u00c1BRANSE!', 'orange');
+    GAME.shake = Math.min(0.5, GAME.shake + 0.10);
+  }
+  return moved;
+}
 function honk() {
   if (GAME.honkCd > 0) return;
-  GAME.honkCd = MODS.claxon ? 3.1 : 0.35;
-  if (MODS.claxon) SFX.cucaracha(); else SFX.honk();
+  GAME.honkCd = MODS.claxon ? 6.0 : 0.35;
+  if (MODS.claxon) { SFX.cucaracha(); airHornShove(); } else SFX.honk();
   for (var i = 0; i < 6; i++) {
     emit({
       x: van.position.x + (Math.random() - 0.5) * 1.5, y: van.position.y + 2.2 + Math.random(),
@@ -13439,16 +14558,25 @@ function honk() {
    range from the current speed, then derive the vertical velocity that puts
    the touchdown exactly there. Slow runs get a high lob, fast runs a flat one,
    and neither can ever come up short into the water. */
+/* the FAR limit on the hero ramp's range: however long the flight, it has to
+   touch down on the plaza and stop before the customs canopy, so the range is
+   capped at what flightWindow() will actually accept. */
+function bigRangeMax(J) { return Math.max(120, CFG.FINISH_D - 80 - J.top); }
 function launchParams(J, speed) {
   var v = speed;
   if (!isFinite(v) || v < 12) v = 12;                 // never divide by ~0 / NaN
+  /* SALTO LARGO. A longer carry - and, because the arc is solved from the
+     range, a taller lob and more hang time with it. The hero ramp still has
+     to land inside its window, so there the card buys a slow run-up the long
+     flight a fast one already had. */
+  var lift = 1 + (MODS.salto || 0) * 0.12;
   /* The gap is cleared by the LOB, not by the horizontal speed. A slow run-up
      gets a taller, slower arc; a fast one gets a flatter arc over roughly the
      same ground. Both land comfortably inside the jump's landing window, so
      enforceFlight() rarely has anything to correct - and when it does, it only
      ever has to nudge. */
-  var R = J.big ? clamp(96 + v * 0.50, 110, 134)
-                : clamp(J.gap + 26 + v * 0.35, J.gap + 24, J.gap + 74);
+  var R = J.big ? clamp((96 + v * 0.50) * lift, 110, bigRangeMax(J))
+                : clamp((J.gap + 26 + v * 0.35) * lift, J.gap + 24, (J.gap + 74) * lift);
   var T = R / v;
   var vy = (0.5 * CFG.GRAV * T * T - J.rise) / T;
   if (!isFinite(vy)) vy = CFG.LAUNCH_VY;
@@ -13517,7 +14645,7 @@ function onTouchdown() {
     if (Math.abs(b.userData.d - GAME.dist) < 12 && Math.abs(b.position.x - GAME.x) < 2.6) { onPad = true; break; }
   }
   if (onPad) {
-    GAME.speed = Math.min(vBoostMax(), GAME.speed + CFG.BOOST_KICK * 0.5);
+    GAME.speed = Math.min(vBoostMax(), GAME.speed + CFG.BOOST_KICK * 0.5 * MODS.boostKick);
     GAME.boostTime = Math.max(GAME.boostTime, CFG.BOOST_TIME * 0.7);
     callout('¡ÓRALE! ¡ATERRIZAJE!', 1.1);
     toastCol('+TURBO', 'green');
@@ -13549,7 +14677,8 @@ function launchJump(J) {
      the hero ramp keeps a horizontal FLOOR so a full-brake approach still
      clears the water, and a CEILING so arriving on a chained boost cannot
      skip the van straight over the customs canopy. */
-  GAME.speed = J.big ? clamp(GAME.speed, 52, 96) : Math.max(GAME.speed, CFG.V_CRUISE);
+  GAME.speed = J.big ? clamp(GAME.speed, CFG.V_CRUISE, CFG.V_MAX * 0.92)
+                     : Math.max(GAME.speed, CFG.V_CRUISE);
   GAME.launchSpeed = GAME.speed;
   var lp = launchParams(J, GAME.speed);
   GAME.vy = lp.vy;
@@ -13563,9 +14692,9 @@ function launchJump(J) {
 
 /* ---------------- run lifecycle ---------------- */
 function resetRun(newSeed) {
-  /* THE ONE PLACE UPGRADES ARE READ. Everything the garage sells lands in
-     MODS here and is never re-read while the van is moving, so a run can
-     never change its own rules half way across the bridge. */
+  /* THE DECK IS READ HERE. Everything the cards do lands in MODS, and the
+     only other place that writes it is pickCard() - a card taken mid-run is
+     in effect on the very next frame, which is the whole point of a draft. */
   applyMods();
   CRUN.voided = false; CRUN.ok = false; CRUN.banked = 0;
   CRUN.mult = 1; CRUN.bonus = 0; CRUN.rivalBonus = 0;
@@ -13594,10 +14723,12 @@ function resetRun(newSeed) {
   GAME.hits = 0; GAME.boosts = 0; GAME.dodged = 0; GAME.coins = 0;
   GAME.streak = 0; GAME.bestStreak = 0; GAME.coinPts = 0; GAME.nearMiss = 0;
   GAME.perfects = 0; GAME.magnet = 0;
-  // ESCUDO DE SALIDA is the only upgrade that changes how a run STARTS
-  GAME.shield = !!MODS.startShield;
+  GAME.xpRun = 0; GAME.xpFrac = 0;
+  /* the three cards that are worth something before the van has moved */
+  GAME.shields = MODS.startShields;
+  GAME.saints = MODS.saints;
   GAME.comboFill = 0; GAME.miniBoosts = 0; GAME.perfectLandings = 0;
-  GAME.nitro = 0; GAME.superT = 0; GAME.superQueued = false;
+  GAME.nitro = MODS.startNitro;  GAME.superT = 0; GAME.superQueued = false;
   GAME.superUsed = 0; GAME.smashes = 0; GAME.superPts = 0;
   GAME.sectionHits = 0; GAME.noLines = 0; GAME.grade = 'C';
   hudCoinShown = 0;
@@ -13629,6 +14760,7 @@ function resetRun(newSeed) {
   resetVanDamage();               // doors shut, spilled boxes + paperwork gone
   resetBoostFlames();             // the mufflers are cold again
   clearFragments();               // no smashed hazard survives a restart
+  clearLaneGlow();                // nor a half-faded COPILOTO hint
   updateNitroUI();                // and the BOOST button goes back to grey
 
   van.position.set(GAME.x, 0, -GAME.dist);
@@ -13648,7 +14780,8 @@ function resetRun(newSeed) {
   var _pw = $('progWrap'); if (_pw) _pw.className = '';
   var _rc = $('resConfetti'); if (_rc) _rc.innerHTML = '';
   updateContractChip();
-  updateWalletUI();
+  renderDeckChips();
+  updateXpHud();
   $('multPill').className = '';
   $('fx-flash').style.opacity = '0';
   $('fx-boostflash').style.opacity = '0';
@@ -13671,8 +14804,7 @@ function beginRun(seed) {
   callout('¡VÁMONOS!', 1.5);
   SFX.blip();
   SFX.mariachiStart();
-  songRestart();          // every run starts the song from the top
-  songApply();
+  songApply();            // the song does NOT restart: only its gain moves
 }
 /* the title card no longer drops straight into a run: it offers three seeded
    CARGO CONTRACTS first. __RR.start() bypasses the picker so a headless
@@ -13694,10 +14826,11 @@ function restart() {
   CONTRACT = null;
   beginRun();
 }
-/* is one of the two full-screen menus in front of the player? */
+/* is a full-screen menu in front of the player? */
 function modalOpen() {
-  var a = $('scrShop'), b = $('scrContracts');
-  return !!((a && a.className.indexOf('on') >= 0) || (b && b.className.indexOf('on') >= 0));
+  if (LVL.active) return true;
+  var b = $('scrContracts');
+  return !!(b && b.className.indexOf('on') >= 0);
 }
 function setPaused(p) {
   if (p && GAME.state === 'PLAYING') {
@@ -13784,7 +14917,7 @@ function arriveUSA() {
 
 /* the time bonus is measured against a PAR that scales with the course, so
    stretching the run does not silently deflate every score */
-var TIME_PAR = Math.round(170 * COURSE_SCALE);       // 247 s
+var TIME_PAR = Math.round(170 * COURSE_SCALE);
 function computeScore() {
   var base = Math.max(0, Math.round((TIME_PAR - GAME.finishTime) * 120));
   // coinPts already carries the streak multiplier, so a clean run of trails
@@ -13867,34 +15000,7 @@ function spawnResConfetti() {
   }
   host.innerHTML = html;
 }
-/* WHAT TO SAVE FOR. A run ends on a wallet number and no reason to care about
-   it; this ends it on the next thing in the TALLER instead. */
-function nextUpgradeHint() {
-  var el = $('nextUpg');
-  if (!el) return;
-  var L = loadUpgrades(), w = loadWallet(), best = null, i;
-  for (i = 0; i < UPGRADES.length; i++) {
-    var u = UPGRADES[i], l = L[u.id] | 0;
-    if (l >= u.max) continue;
-    var c = upgCost(u, l);
-    if (!best || c < best.cost) best = { u: u, cost: c };
-  }
-  if (!best) {
-    el.textContent = '\u00a1TALLER COMPLETO! Ya no hay nada que comprarle.';
-    el.className = 'can';
-    return;
-  }
-  var need = best.cost - w;
-  if (need <= 0) {
-    el.innerHTML = 'YA PUEDES COMPRAR <b>' + best.u.name + '</b> \u00b7 ' +
-                   best.cost.toLocaleString() + ' monedas';
-    el.className = 'can';
-  } else {
-    el.innerHTML = 'SIGUIENTE MEJORA <b>' + best.u.name + '</b> \u00b7 te faltan ' +
-                   need.toLocaleString() + ' monedas';
-    el.className = '';
-  }
-}
+
 
 function showResults() {
   GAME.resultsShown = true;
@@ -13948,17 +15054,22 @@ function showResults() {
     }
     if (RIVAL.beaten) oc.textContent += '  ·  ¡Le ganaste a Chuy! +200';
   }
-  var bk = $('rBanked'); if (bk) bk.textContent = '+' + CRUN.banked.toLocaleString();
-  var wl = $('rWallet'); if (wl) wl.textContent = loadWallet().toLocaleString();
-  updateWalletUI();
-  nextUpgradeHint();
-  updateRunLine();              // the title card's record line, for next time
+  var bk = $('rXp'); if (bk) bk.textContent = '+' + CRUN.banked.toLocaleString();
+  var lv = $('rLevel'); if (lv) lv.textContent = String(DECK.level);
+  /* the high-score table, the name box if this run made the ten, and the
+     title card's record line for next time */
+  offerScoreEntry();
+  renderDeckChips();
+  updateXpHud();
+  updateRunLine();
   showScreen('scrResults');
   updateTouchUI();
+  /* the card is on screen now, so it can be measured and trimmed to fit */
+  try { window.setTimeout(fitCards, 0); } catch (e) { fitCards(); }
 }
 
 /* ---------------- UI helpers ---------------- */
-var SCREEN_IDS = ['scrTitle', 'scrPause', 'scrResults', 'scrContracts', 'scrShop'];
+var SCREEN_IDS = ['scrTitle', 'scrPause', 'scrResults', 'scrContracts'];
 /* ---------------------------------------------------------------------------
    THE SCROLL CUE
    A card taller than the window scrolls - `.screen` is the scroll container and
@@ -13968,6 +15079,18 @@ var SCREEN_IDS = ['scrTitle', 'scrPause', 'scrResults', 'scrContracts', 'scrShop
    when there is real overflow left to reach.
    --------------------------------------------------------------------------- */
 function updateScrollCues() {
+  var lv = $('scrLevel');
+  if (lv) {
+    var lon = LVL.active, lmore = false;
+    if (lon) {
+      try {
+        lmore = (lv.scrollHeight - lv.clientHeight > 12) &&
+                (lv.scrollHeight - lv.clientHeight - lv.scrollTop > 12);
+      } catch (eL) { lmore = false; }
+    }
+    var lwant = (lon ? 'on' : '') + (lmore ? ' hasMore' : '');
+    if (lv.className !== lwant) lv.className = lwant;
+  }
   for (var i = 0; i < SCREEN_IDS.length; i++) {
     var el = $(SCREEN_IDS[i]);
     if (!el) continue;
@@ -13988,7 +15111,7 @@ function showScreen(id) {
     $(s).className = 'screen' + (s === id ? ' on' : '');
   });
   // measured after the browser has laid the card out
-  try { window.setTimeout(updateScrollCues, 0); } catch (e) { updateScrollCues(); }
+  try { window.setTimeout(fitCards, 0); } catch (e) { fitCards(); }
 }
 /* ---------------------------------------------------------------------------
    NOTIFICATION COLUMN
@@ -14178,11 +15301,23 @@ function hitObstacle(o) {
                    slip: +GAME.slip.toFixed(2), air: GAME.airborne,
                    v: Math.round(GAME.speed) });
   } catch (eH) { }
+  /* ESTAMPITA DEL TABLERO, first: the little saint on the dash cancels the
+     whole impact - no hit, no speed, no streak break, and not even a broken
+     shield. It is the rarest protection in the deck, so it goes ahead of one. */
+  if (GAME.saints > 0) {
+    GAME.saints--;
+    GAME.invuln = CFG.INVULN;
+    GAME.shake = Math.min(0.8, GAME.shake + 0.30);
+    SFX.power();
+    toastCol('\u00a1LA ESTAMPITA TE SALV\u00d3!', 'blue');
+    fxImpact(o.position);
+    return;
+  }
   /* ESCUDO: a shield eats exactly one impact - no hit on the card, no speed
      loss, and the streak survives. It still costs the invulnerability window
      so the player is not punished twice by the same obstacle. */
-  if (GAME.shield) {
-    GAME.shield = false;
+  if (GAME.shields > 0) {
+    GAME.shields--;
     GAME.invuln = CFG.INVULN;
     GAME.shake = Math.min(1.0, GAME.shake + 0.45);
     SFX.power();
@@ -14500,7 +15635,7 @@ function updateBoosts(dt) {
       GAME.boosts++;
       // Road pads never extend the two-second superboost.
       GAME.speed = Math.min(superActive() ? vSuperMax() : vBoostMax(),
-                            GAME.speed + CFG.BOOST_KICK);
+                            GAME.speed + CFG.BOOST_KICK * MODS.boostKick);   // GASOLINA PREMIUM
       /* ---- BOOST CHAINS.
          Only pads authored as part of a staggered chain (chain:1) count, so
          the wall of pads on a jump run-up cannot inflate the multiplier. Each
@@ -14562,9 +15697,9 @@ function stepPlaying(dt) {
     if (brk) {
       GAME.speed -= CFG.BRAKE * dt;
     } else if (acc) {
-      GAME.speed += CFG.ACCEL * dt;
+      GAME.speed += CFG.ACCEL * MODS.accel * dt;          // CAJA LIGERA
     } else {
-      if (GAME.speed < Math.min(CFG.V_CRUISE, cap)) GAME.speed += CFG.ACCEL_COAST * dt;
+      if (GAME.speed < Math.min(CFG.V_CRUISE, cap)) GAME.speed += CFG.ACCEL_COAST * MODS.accel * dt;
       else GAME.speed -= CFG.DRAG * 0.45 * dt;
     }
     // the super boost is explicitly ALLOWED to hold above the cap
@@ -15151,9 +16286,13 @@ function updateCamera(dt) {
   /* FOV opens up with speed: 60 at rest, 78 flat out on a boost. */
   var fovBase = portrait ? 68 : 60;
   var fovTop = portrait ? 86 : 78;
-  var fovGoal = clamp(fovBase + spdF * 13 + (GAME.boostTime > 0 ? 7 : 0) +
+  /* ...plus a few degrees that follow the CAP CURVE itself, so the last fifth
+     of the course is visibly wider-angle than the first - the finale looks
+     faster as well as being faster. */
+  var capF = (GAME.state === 'PLAYING' || GAME.state === 'FINISHED') ? capFracAt(GAME.dist) : 0;
+  var fovGoal = clamp(fovBase + spdF * 13 + capF * 5 + (GAME.boostTime > 0 ? 7 : 0) +
                       (GAME.superT > 0 ? 11 : 0) + (GAME.airborne ? 3 : 0),
-                      fovBase, fovTop + (GAME.superT > 0 ? 10 : 0)) - GAME.camPush * 12;
+                      fovBase, fovTop + 5 + (GAME.superT > 0 ? 10 : 0)) - GAME.camPush * 12;
   camera.fov = damp(camera.fov, fovGoal, 5, dt);
   camera.updateProjectionMatrix();
 
@@ -15591,7 +16730,11 @@ var speedEl = null, gameHostEl = null, speedOpacityShown = -1;
 function updateSpeedFX(dt) {
   if (!speedEl) speedEl = $('fx-speed');
   var over = clamp((GAME.speed - CFG.V_CRUISE * 1.04) / (CFG.V_BOOST_MAX - CFG.V_CRUISE), 0, 1);
-  var o = Math.min(0.95, over * 0.62 + (GAME.boostTime > 0 ? 0.40 : 0) +
+  /* the streaks lean on the cap curve too: the same speed reads as faster at
+     the end of the course than at the start, which is where the run is
+     supposed to be at its most frantic */
+  var capO = (GAME.state === 'PLAYING') ? capFracAt(GAME.dist) * 0.12 : 0;
+  var o = Math.min(0.95, over * 0.62 + capO + (GAME.boostTime > 0 ? 0.40 : 0) +
                          (GAME.superT > 0 ? 0.30 : 0));
   if (GAME.state !== 'PLAYING' && GAME.state !== 'FINISHED') o = 0;
   if (GAME.noLines > 0) o = 0;              // an impact kills the speed lines dead
@@ -15673,6 +16816,22 @@ function frame(dt, tAbs) {
   if (!(dt > 0)) dt = 0.0001;
   if (dt > 0.05) dt = 0.05;
   viewportWatch();               // the canvas always matches innerW x innerH
+  /* ---- THE DRAFT FREEZE ---------------------------------------------------
+     A HARD pause, not slow motion: the frame returns before it touches
+     WORLD_T, the game clock, the physics or anything that moves, so the scene
+     behind the cards is a still frame and reading it costs the player nothing.
+     The song is the one thing that keeps running - it must not so much as
+     flinch at a state change (see songApply). */
+  if (LVL.active) {
+    /* the only clock that runs behind the cards is the flourish's own */
+    if (LVL.closing) {
+      LVL.closeT -= dt;
+      if (LVL.closeT <= 0) closeDraft();
+    }
+    if (audioReady) { musSetMode(musWantMode()); songApply(); }
+    if (!DEBUG_NORENDER) renderer.render(scene, camera);
+    return;
+  }
   WORLD_T += dt;
   var t = (tAbs === undefined) ? WORLD_T : tAbs;
 
@@ -15680,7 +16839,10 @@ function frame(dt, tAbs) {
      which stretches the hang time just enough to read the coin arc and to
      line the landing up - the classic "hero moment" beat. It is a uniform
      scale on the whole sim, so the launch solve stays exactly as solved. */
-  var sdt = (GAME.state === 'PLAYING' && GAME.airborne) ? dt * 0.85 : dt;
+  /* SALTO LARGO also stretches the beat itself: 0.85 becomes 0.78 with both
+     copies, which is real hang time on the clock the player is watching. */
+  var sdt = (GAME.state === 'PLAYING' && GAME.airborne)
+    ? dt * (0.85 - (MODS.salto || 0) * 0.035) : dt;
 
   if (GAME.state === 'TITLE') {
     updateTitle(dt);
@@ -15706,6 +16868,7 @@ function frame(dt, tAbs) {
     updateCargoBoxes(dt);
     updatePapers(dt);
     updateFragments(dt);
+    updateLaneGlow(dt);
     updateWorld(dt);
   }
   updateSpeedFX(dt);
@@ -15723,6 +16886,17 @@ function frame(dt, tAbs) {
   // the music itself is scheduled off the audio clock; the loop only ever
   // tells it which variation the game is currently in
   if (audioReady) { musSetMode(musWantMode()); songApply(); }
+
+  /* ---- a level is waiting. Deal it now if the road allows: never in mid-air
+     (the flight arc was solved at take-off and has to land) and never during
+     the pull-over. On the results card it is simply dealt on top. */
+  if (LVL.pending > 0 && !LVL.active) {
+    if (GAME.state === 'PLAYING') {
+      if (!GAME.airborne && !PULLOVER.active) openDraft();
+    } else if (GAME.state === 'FINISHED' && GAME.resultsShown) {
+      openDraft();
+    }
+  }
 
   if (!DEBUG_NORENDER) renderer.render(scene, camera);
 }
@@ -15773,9 +16947,16 @@ function warmTextures() {
       makeBubbleTexture(CUSTOMS_PHRASES[i], true); makeBubbleTexture(CUSTOMS_PHRASES[i], false);
     }
     for (i = 0; i < RIVAL_TAUNTS.length; i++) makeTauntTexture(RIVAL_TAUNTS[i]);
-    // the four score pop-ups the game can ever draw
+    /* every score pop-up the coin economy can ever draw: three streak
+       multipliers x four DOBLE FACTURA levels x with and without the SALTO
+       LARGO air bonus. Twenty-four little canvases, all made here rather than
+       uploaded in the middle of a frame. */
     popNumTexture('+' + SUPER_SMASH_PTS);
-    popNumTexture('+100'); popNumTexture('+200'); popNumTexture('+300');
+    for (i = 1; i <= 3; i++) {
+      for (var fq = 0; fq <= 3; fq++) {
+        for (var aq = 1; aq <= 2; aq++) popNumTexture('+' + Math.round(100 * i * (1 + fq * 0.40) * aq));
+      }
+    }
     if (!RING_TEX) RING_TEX = makeRingTexture();
     rainTexture();
   } catch (eW) { }
@@ -15878,6 +17059,7 @@ function boot() {
   buildPolice();
   buildHeli();
   buildRain();          // never build a Points cloud + upload its texture mid-run
+  buildLaneGlow();      // COPILOTO's safe-lane strip
   warmTextures();
 
   if (IS_TOUCH) document.body.className = (document.body.className + ' touch').trim();
@@ -15896,14 +17078,16 @@ function boot() {
     $('logoEmblem').appendChild(ec);
   } catch (e2) { }
 
-  /* the garage: read what has been bought, dress the van accordingly, and
-     draw the wrench on the shop card */
+  /* the deck: whatever this TAB has drafted so far (sessionStorage, so it
+     survives a reload and dies with the tab), and the dead wallet keys of the
+     economy this replaced */
+  migrateAwayWallet();
+  SCORES = loadScores();
+  DECK = loadDeck();
   applyMods();
-  updateWalletUI();
-  try {
-    var wh = $('shopWrench');
-    if (wh) { wh.innerHTML = ''; wh.appendChild(iconCanvas(72, drawWrenchIcon)); }
-  } catch (eW) { }
+  renderDeckChips();
+  updateXpHud();
+  renderScoreTables();
 
   /* Stand the audio graph up NOW, suspended, so music.mp3 can be fetched and
      decoded against the real context while the title card is on screen and the
@@ -16003,7 +17187,9 @@ function boot() {
       get nearMiss() { return GAME.nearMiss; },
       get perfects() { return GAME.perfects; },
       get magnet() { return GAME.magnet; },
-      get shield() { return GAME.shield; },
+      get shield() { return GAME.shields > 0; },
+      get shields() { return GAME.shields; },
+      get saints() { return GAME.saints; },
       get coinPts() { return GAME.coinPts; },
       get totalCoins() { return totalCoins; },
       get grade() { return computeGrade(); },
@@ -16080,6 +17266,24 @@ function boot() {
       },
       /* ---- the NITRO charge and the SUPER BOOST ---- */
       get police() { return { encounters: MOMENT.fired.police, planned: momentPlan.filter(function(m){return m.kind === 'police';}).length, stopped: PULLOVER.active, stopTime: PULLOVER.t, fines: GAME.fines, coinsLost: GAME.fineCoins }; },
+      /* WHERE THE PATROL ACTUALLY IS, so a test can prove the berth rather
+         than just counting fines: `lat` and `gap` are its clearance from the
+         van, and `hit` is the contact box the pull-over fires on. */
+      get patrol() {
+        var live = !!(policeTruck && policeTruck.visible && MOMENT.police >= 0);
+        return {
+          live: live, lane: MOMENT.policeLane, playerLane: GAME.lane,
+          x: live ? +MOMENT.policeX.toFixed(2) : null,
+          d: live ? Math.round(MOMENT.policeD) : null,
+          lat: live ? +Math.abs(MOMENT.policeX - GAME.x).toFixed(2) : null,
+          gap: live ? +(MOMENT.policeD - GAME.dist).toFixed(1) : null,
+          hit: live ? polHits(MOMENT.policeD, MOMENT.policeX) : false,
+          berth: +policeBerth().toFixed(2), standoff: +policeStandoff().toFixed(1),
+          hitX: POL_HIT_X, hitD: POL_HIT_D,
+          swerves: GHOST_AUDIT.policeSwerves, brakes: GHOST_AUDIT.policeBrakes,
+          overlaps: GHOST_AUDIT.policeOverlaps
+        };
+      },
       get traffic() { return { started: TRAFFIC.started, completed: TRAFFIC.completed }; },
       get nitro() {
         var planned = [], i;
@@ -16105,46 +17309,73 @@ function boot() {
         boostOrHonk();
         return +GAME.superT.toFixed(3);
       },
-      /* ---- PASS 6: wallet / garage / contracts / rival / weather ---- */
-      get wallet() { return loadWallet(); },
-      setWallet: function (n) { saveWallet(Math.max(0, (+n) | 0)); updateWalletUI();
-        if (modalOpen()) buildShop(); return loadWallet(); },
-      get upgrades() { return loadUpgrades(); },
+      /* ---- PASS 8: the deck / the draft / the high-score table ---- */
+      get cards() {
+        var deck = {}, k;
+        for (k in DECK.deck) if (Object.prototype.hasOwnProperty.call(DECK.deck, k)) deck[k] = DECK.deck[k];
+        return {
+          level: DECK.level, xp: DECK.xp, size: deckSize(),
+          have: DECK.level > 0 ? xpNeed(DECK.level) : 0,
+          need: xpNeed(DECK.level + 1),
+          xpRun: GAME.xpRun, deck: deck,
+          pending: LVL.pending, active: LVL.active, draws: LVL.draws,
+          offer: LVL.offer.map(function (c) { return c.id; }),
+          curve: { base: XP_BASE, pow: XP_POW },
+          pool: CARD_POOL.map(function (c) {
+            var l = deckLevel(c.id);
+            return { id: c.id, name: c.name, cat: c.cat, max: c.max, level: l,
+                     eff: c.eff(Math.min(c.max, l + 1)) };
+          })
+        };
+      },
+      giveCard: function (id, n) {
+        var C = cardById(id);
+        if (!C) return null;
+        var k = (n === undefined) ? 1 : ((+n) | 0);
+        DECK.deck[id] = clamp(deckLevel(id) + k, 0, C.max);
+        saveDeck(); applyMods(); renderDeckChips();
+        if (id === 'carga') GAME.shields = Math.max(GAME.shields, MODS.startShields);
+        else if (id === 'estampita') GAME.saints = Math.max(GAME.saints, MODS.saints);
+        return deckLevel(id);
+      },
+      levelUp: function (n) {
+        var k = (n === undefined) ? 1 : Math.max(1, (+n) | 0);
+        DECK.level += k; LVL.pending += k;
+        saveDeck(); updateXpHud();
+        openDraft();
+        return LVL.offer.map(function (c) { return c.id; });
+      },
+      pick: function (i) { return pickCard((i === undefined) ? 0 : ((+i) | 0)); },
+      addXp: function (n) { return addXp(n); },
+      resetDeck: function () { return resetDeck(); },
+      get draftOpen() { return LVL.active; },
+      get draft() {
+        return { active: LVL.active, closing: LVL.closing,
+                 closeT: +LVL.closeT.toFixed(3), pending: LVL.pending,
+                 sel: LVL.sel, draws: LVL.draws,
+                 offer: LVL.offer.map(function (c) { return c.id; }) };
+      },
+      get scores() { return SCORES.slice(); },
+      get scoreEntry() { return HI.entry ? { n: HI.entry.n, s: HI.entry.s, saved: HI.saved } : null; },
+      get scoreFit() { return { res: HI.resFit, title: HI.titleFit,
+                                allRes: HI.allRes, allTitle: HI.allTitle,
+                                trace: (HI.trace || []).slice() }; },
+      fitCards: function () { fitCards(); return { res: HI.resFit, title: HI.titleFit }; },
+      submitName: function (nm) { return submitScore(nm); },
+      clearScores: function () { SCORES = []; HI.entry = null; HI.saved = false;
+        saveScores(); renderScoreTables(); return true; },
       get mods() {
-        return { vmax: +MODS.vmax.toFixed(4), boostTime: +MODS.boostTime.toFixed(2),
+        return { vmax: +MODS.vmax.toFixed(4), accel: +MODS.accel.toFixed(3),
+                 boostTime: +MODS.boostTime.toFixed(2), boostKick: +MODS.boostKick.toFixed(3),
                  laneTime: +MODS.laneTime.toFixed(4), magnet: +MODS.magnet.toFixed(2),
-                 hitKeep: +MODS.hitKeep.toFixed(3), startShield: MODS.startShield,
-                 nitroChance: MODS.nitroChance, streakX2: MODS.streakX2, streakX3: MODS.streakX3,
-                 claxon: MODS.claxon, luces: MODS.luces, calcas: MODS.calcas,
+                 hitKeep: +MODS.hitKeep.toFixed(3), startShields: MODS.startShields,
+                 saints: MODS.saints, startNitro: MODS.startNitro, nitroTwice: MODS.nitroTwice,
+                 coinValue: +MODS.coinValue.toFixed(2),
+                 streakX2: MODS.streakX2, streakX3: MODS.streakX3,
+                 claxon: MODS.claxon, placas: MODS.placas,
+                 copiloto: MODS.copiloto, salto: MODS.salto,
                  levels: MODS.levels };
       },
-      get upgradeTable() {
-        return UPGRADES.map(function (u) {
-          var costs = [], l;
-          for (l = 0; l < u.max; l++) costs.push(upgCost(u, l));
-          return { id: u.id, name: u.name, max: u.max, base: u.base,
-                   cosmetic: !!u.cosmetic, costs: costs,
-                   total: costs.reduce(function (a, b) { return a + b; }, 0) };
-        });
-      },
-      get treeCost() { return upgTreeCost(); },
-      buy: function (id) { return buyUpgrade(id); },
-      setUpgrade: function (id, lvl) {
-        var u = upgById(id); if (!u) return null;
-        var L = loadUpgrades(); L[id] = clamp((+lvl) | 0, 0, u.max);
-        saveUpgrades(L); applyMods(); if (modalOpen()) buildShop(); return loadUpgrades();
-      },
-      maxUpgrades: function () {
-        var L = loadUpgrades();
-        for (var i = 0; i < UPGRADES.length; i++) L[UPGRADES[i].id] = UPGRADES[i].max;
-        saveUpgrades(L); applyMods(); return loadUpgrades();
-      },
-      resetProgress: function () { return resetProgress(); },
-      shop: function (on) {
-        if (on === false) { closeShop(); return false; }
-        openShop(GAME.state === 'FINISHED' ? 'scrResults' : 'scrTitle'); return true;
-      },
-      get shopOpen() { var s = $('scrShop'); return !!(s && s.className.indexOf('on') >= 0); },
       get contract() {
         return { id: CONTRACT ? CONTRACT.id : null, name: CONTRACT ? CONTRACT.name : '',
                  voided: CRUN.voided, ok: CRUN.ok, par: +CRUN.par.toFixed(2),
@@ -16306,7 +17537,12 @@ function boot() {
         return {
           state: SONG.state, mode: SONG.mode, url: SONG.url,
           duration: +SONG.dur.toFixed(2), playing: SONG.playing,
-          started: SONG.started, plays: SONG.plays,
+          started: SONG.started,
+          /* PLAYS MUST STAY AT 1 for the whole life of the page: every extra
+             one of these is an audible restart. */
+          plays: SONG.plays, ramp: SONG_RAMP,
+          startedAt: AC ? +SONG.startedAt.toFixed(3) : 0,
+          offset: +SONG.offset.toFixed(3),
           position: +songPosition().toFixed(2),
           gain: SONG.gain ? +SONG.gain.gain.value.toFixed(4) : null,
           wantGain: +songWantGain().toFixed(3),
